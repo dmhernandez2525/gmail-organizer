@@ -268,9 +268,14 @@ def analyze_inbox(account_name, sample_size, query, job_search_focus):
         progress_bar.progress(30)
         logger.info(f"Fetching {sample_size} emails with query: '{query}'")
 
-        # Show info about large fetches
-        if sample_size > 5000:
-            st.info(f"📥 Fetching {sample_size:,} emails may take 5-10 minutes. Please be patient...")
+        # Show info about large fetches with time estimate
+        if sample_size > 10000:
+            estimated_time = (sample_size / 1000) * 0.5  # ~0.5 min per 1000 emails with metadata
+            st.info(f"📥 Fetching {sample_size:,} emails (metadata only - fast mode)")
+            st.caption(f"⏱️ Estimated time: ~{estimated_time:.1f} minutes. Check Terminal for real-time progress.")
+
+        # Create a placeholder for progress updates
+        progress_placeholder = st.empty()
 
         emails = ops.fetch_emails(max_results=sample_size, query=query)
 
@@ -280,7 +285,9 @@ def analyze_inbox(account_name, sample_size, query, job_search_focus):
             return
 
         logger.info(f"✓ Fetched {len(emails)} emails")
-        st.info(f"✓ Fetched {len(emails)} emails")
+        progress_bar.progress(40)
+        status_text.text(f"✓ Fetched {len(emails):,} emails!")
+        st.success(f"✓ Successfully fetched {len(emails):,} emails (metadata only - super fast!)")
 
         # Analyze patterns
         status_text.text("Analyzing email patterns...")
@@ -569,9 +576,12 @@ def process_with_claude_code_step1(account_name, max_emails, query):
         ops = GmailOperations(service, email)
 
         # Fetch emails
-        status_text.text(f"Fetching up to {max_emails} emails...")
+        status_text.text(f"Fetching up to {max_emails:,} emails (metadata only - fast)...")
         progress_bar.progress(40)
         logger.info(f"Fetching {max_emails} emails with query: '{query}'")
+
+        if max_emails > 10000:
+            st.info(f"📥 Fetching {max_emails:,} emails - check Terminal window for real-time progress!")
 
         emails = ops.fetch_emails(max_results=max_emails, query=query)
 

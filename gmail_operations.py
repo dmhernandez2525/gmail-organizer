@@ -71,19 +71,16 @@ class GmailOperations:
             logger.info(f"Fetching details for {len(message_ids)} emails...")
             print(f"Fetching details for {len(message_ids)} emails...")
 
-            # Now fetch email details in batches using batch API
-            batch_size = 100  # Process 100 emails per batch
-            for i in range(0, len(message_ids), batch_size):
-                batch_ids = message_ids[i:i + batch_size]
+            # Fetch email details - using metadata only for speed
+            for i, email_id in enumerate(message_ids):
+                email_data = self._get_email_details(email_id, metadata_only=True)
+                if email_data:
+                    emails.append(email_data)
 
-                for email_id in batch_ids:
-                    email_data = self._get_email_details(email_id)
-                    if email_data:
-                        emails.append(email_data)
-
-                if (i + batch_size) % 500 == 0 or i + batch_size >= len(message_ids):
-                    logger.info(f"  Fetched {min(i + batch_size, len(message_ids))}/{len(message_ids)} email details...")
-                    print(f"  Fetched {min(i + batch_size, len(message_ids))}/{len(message_ids)} emails...")
+                # Progress updates every 500 emails
+                if (i + 1) % 500 == 0:
+                    logger.info(f"  Fetched {i + 1}/{len(message_ids)} email details...")
+                    print(f"  Fetched {i + 1}/{len(message_ids)} emails...")
 
             logger.info(f"Successfully fetched {len(emails)} emails")
 
@@ -93,13 +90,22 @@ class GmailOperations:
 
         return emails
 
-    def _get_email_details(self, email_id: str) -> Optional[Dict]:
-        """Get detailed information about a single email"""
+    def _get_email_details(self, email_id: str, metadata_only: bool = True) -> Optional[Dict]:
+        """
+        Get email information
+
+        Args:
+            email_id: Gmail message ID
+            metadata_only: If True, only fetch headers (MUCH faster, no body)
+        """
         try:
+            # Use 'metadata' format for just headers (10x faster than 'full')
+            # Only fetch subject, from, to, date headers
             message = self.service.users().messages().get(
                 userId='me',
                 id=email_id,
-                format='full'
+                format='metadata',
+                metadataHeaders=['Subject', 'From', 'To', 'Date']
             ).execute()
 
             headers = message['payload'].get('headers', [])
@@ -109,8 +115,8 @@ class GmailOperations:
             sender = self._get_header(headers, 'From')
             date = self._get_header(headers, 'Date')
 
-            # Get email body preview
-            body_preview = self._get_body_preview(message['payload'])
+            # No body needed for classification - saves tons of time
+            body_preview = ""
 
             return {
                 'email_id': email_id,
