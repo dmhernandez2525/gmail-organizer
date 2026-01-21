@@ -3,8 +3,10 @@
 import base64
 from typing import List, Dict, Optional
 from googleapiclient.errors import HttpError
+from googleapiclient.http import BatchHttpRequest
 from email.mime.text import MIMEText
 from config import CATEGORIES, BATCH_SIZE
+import time
 
 
 class GmailOperations:
@@ -83,20 +85,29 @@ class GmailOperations:
             if progress_callback:
                 progress_callback(0, total_to_fetch, f"Fetching details for {total_to_fetch:,} emails...")
 
-            # Fetch email details - using metadata only for speed
-            for i, email_id in enumerate(message_ids):
-                email_data = self._get_email_details(email_id, metadata_only=True)
-                if email_data:
-                    emails.append(email_data)
+            # Fetch email details using BATCH API for 100x speed improvement!
+            # Process in batches of 100 (Gmail API limit per batch request)
+            batch_size = 100
+            for batch_start in range(0, len(message_ids), batch_size):
+                batch_end = min(batch_start + batch_size, len(message_ids))
+                batch_ids = message_ids[batch_start:batch_end]
 
-                # Progress updates every 100 emails for more frequent UI updates
-                if (i + 1) % 100 == 0 or (i + 1) == total_to_fetch:
-                    logger.info(f"  Fetched {i + 1}/{total_to_fetch} email details...")
-                    print(f"  Fetched {i + 1}/{total_to_fetch} emails...")
+                # Fetch this batch (100 emails in 1 HTTP request!)
+                batch_emails = self._fetch_emails_batch(batch_ids)
+                emails.extend(batch_emails)
 
-                    # Update UI progress
-                    if progress_callback:
-                        progress_callback(i + 1, total_to_fetch, f"Fetched {i + 1:,}/{total_to_fetch:,} emails")
+                # Progress updates
+                fetched_count = batch_end
+                if fetched_count % 500 == 0 or fetched_count == total_to_fetch:
+                    logger.info(f"  Fetched {fetched_count}/{total_to_fetch} email details...")
+                    print(f"  Fetched {fetched_count}/{total_to_fetch} emails...")
+
+                # Update UI progress every batch
+                if progress_callback:
+                    progress_callback(fetched_count, total_to_fetch, f"Fetched {fetched_count:,}/{total_to_fetch:,} emails")
+
+                # Small delay to avoid rate limits (10 batches/second max)
+                time.sleep(0.1)
 
             logger.info(f"Successfully fetched {len(emails)} emails")
 
@@ -106,6 +117,62 @@ class GmailOperations:
         except HttpError as error:
             logger.error(f"Error fetching emails: {error}", exc_info=True)
             print(f"An error occurred: {error}")
+
+        return emails
+
+    def _fetch_emails_batch(self, email_ids: List[str]) -> List[Dict]:
+        """
+        Fetch multiple emails in a single batch request (100x faster!)
+
+        Args:
+            email_ids: List of email IDs to fetch (max 100 per batch)
+
+        Returns:
+            List of email dictionaries
+        """
+        from logger import logger
+
+        emails = []
+        batch = self.service.new_batch_http_request()
+
+        def callback(request_id, response, exception):
+            """Callback for each email in the batch"""
+            if exception is not None:
+                logger.warning(f"Error fetching email in batch: {exception}")
+                return
+
+            try:
+                headers = response['payload'].get('headers', [])
+
+                subject = self._get_header(headers, 'Subject')
+                sender = self._get_header(headers, 'From')
+                date = self._get_header(headers, 'Date')
+
+                emails.append({
+                    'email_id': response['id'],
+                    'subject': subject,
+                    'sender': sender,
+                    'date': date,
+                    'body_preview': "",  # Not needed for classification
+                    'labels': response.get('labelIds', [])
+                })
+            except Exception as e:
+                logger.warning(f"Error parsing email in batch: {e}")
+
+        # Add all emails to batch request
+        for email_id in email_ids:
+            batch.add(
+                self.service.users().messages().get(
+                    userId='me',
+                    id=email_id,
+                    format='metadata',
+                    metadataHeaders=['Subject', 'From', 'To', 'Date']
+                ),
+                callback=callback
+            )
+
+        # Execute batch (fetches all emails in 1 HTTP request!)
+        batch.execute()
 
         return emails
 
