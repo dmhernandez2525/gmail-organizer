@@ -89,18 +89,19 @@ class GmailOperations:
             # Process in batches of 100 (Gmail API limit per batch request)
             # Gmail API limit: 15,000 quota units/min, messages.get = 5 units
             # Max: 3,000 messages/min = 30 batches/min = 1 batch every 2 seconds
-            # Using 3.5s for safety margin + quota recovery from previous runs
+            # Using very conservative delays due to quota recovery issues
             batch_size = 100
-            retry_delay = 3.5  # Conservative delay between batches
+            retry_delay = 10.0  # Very conservative: 6 batches/min (well under 30 limit)
 
             for batch_start in range(0, len(message_ids), batch_size):
                 batch_end = min(batch_start + batch_size, len(message_ids))
                 batch_ids = message_ids[batch_start:batch_end]
 
-                # First batch: wait longer to let quota recover from any previous runs
+                # First batch: wait much longer to let quota fully recover from previous runs
                 if batch_start == 0:
-                    logger.info("Starting batch fetching, waiting 10s for quota recovery...")
-                    time.sleep(10)
+                    logger.info("Starting batch fetching, waiting 120s for full quota recovery...")
+                    print("⏱️  Waiting 2 minutes for Gmail API quota to fully recover...")
+                    time.sleep(120)
 
                 # Fetch this batch with retry logic for rate limits
                 max_retries = 5  # More retries to handle quota recovery
@@ -130,7 +131,7 @@ class GmailOperations:
                 if progress_callback:
                     progress_callback(fetched_count, total_to_fetch, f"Fetched {fetched_count:,}/{total_to_fetch:,} emails")
 
-                # Rate limiting: 3.5 seconds between batches (~17 batches/min, well under 30 limit)
+                # Rate limiting: 10 seconds between batches (6 batches/min, well under 30 limit)
                 time.sleep(retry_delay)
 
             logger.info(f"Successfully fetched {len(emails)} emails")
