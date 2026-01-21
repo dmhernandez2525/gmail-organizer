@@ -15,13 +15,14 @@ class GmailOperations:
         self.account_email = account_email
         self.labels_cache = None
 
-    def fetch_emails(self, max_results=100, query="in:inbox") -> List[Dict]:
+    def fetch_emails(self, max_results=100, query="in:inbox", progress_callback=None) -> List[Dict]:
         """
         Fetch emails from Gmail with pagination support
 
         Args:
             max_results: Maximum number of emails to fetch (no limit if set high)
             query: Gmail search query (e.g., "in:inbox", "is:unread")
+            progress_callback: Optional callback function(current, total, message) for progress updates
 
         Returns:
             List of email dictionaries
@@ -36,6 +37,9 @@ class GmailOperations:
         try:
             # First, get all message IDs using pagination
             logger.info(f"Fetching message IDs (max: {max_results}, query: '{query}')...")
+
+            if progress_callback:
+                progress_callback(0, max_results, "Finding message IDs...")
 
             while fetched_count < max_results:
                 # Fetch up to 500 message IDs per page (API max)
@@ -58,6 +62,10 @@ class GmailOperations:
 
                 logger.info(f"  Found {fetched_count} message IDs so far...")
 
+                # Update UI progress
+                if progress_callback:
+                    progress_callback(fetched_count, max_results, f"Found {fetched_count:,} message IDs...")
+
                 # Check if there are more pages
                 page_token = results.get('nextPageToken')
                 if not page_token:
@@ -68,8 +76,12 @@ class GmailOperations:
                 print(f"No messages found for query: {query}")
                 return []
 
-            logger.info(f"Fetching details for {len(message_ids)} emails...")
-            print(f"Fetching details for {len(message_ids)} emails...")
+            total_to_fetch = len(message_ids)
+            logger.info(f"Fetching details for {total_to_fetch} emails...")
+            print(f"Fetching details for {total_to_fetch} emails...")
+
+            if progress_callback:
+                progress_callback(0, total_to_fetch, f"Fetching details for {total_to_fetch:,} emails...")
 
             # Fetch email details - using metadata only for speed
             for i, email_id in enumerate(message_ids):
@@ -77,12 +89,19 @@ class GmailOperations:
                 if email_data:
                     emails.append(email_data)
 
-                # Progress updates every 500 emails
-                if (i + 1) % 500 == 0:
-                    logger.info(f"  Fetched {i + 1}/{len(message_ids)} email details...")
-                    print(f"  Fetched {i + 1}/{len(message_ids)} emails...")
+                # Progress updates every 100 emails for more frequent UI updates
+                if (i + 1) % 100 == 0 or (i + 1) == total_to_fetch:
+                    logger.info(f"  Fetched {i + 1}/{total_to_fetch} email details...")
+                    print(f"  Fetched {i + 1}/{total_to_fetch} emails...")
+
+                    # Update UI progress
+                    if progress_callback:
+                        progress_callback(i + 1, total_to_fetch, f"Fetched {i + 1:,}/{total_to_fetch:,} emails")
 
             logger.info(f"Successfully fetched {len(emails)} emails")
+
+            if progress_callback:
+                progress_callback(len(emails), len(emails), f"✓ Fetched {len(emails):,} emails!")
 
         except HttpError as error:
             logger.error(f"Error fetching emails: {error}", exc_info=True)

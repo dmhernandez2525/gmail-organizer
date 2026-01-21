@@ -263,21 +263,28 @@ def analyze_inbox(account_name, sample_size, query, job_search_focus):
         service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
         ops = GmailOperations(service, email)
 
-        # Fetch sample emails
-        status_text.text(f"Fetching up to {sample_size:,} emails for analysis...")
-        progress_bar.progress(30)
+        # Fetch sample emails with real-time progress updates
         logger.info(f"Fetching {sample_size} emails with query: '{query}'")
 
         # Show info about large fetches with time estimate
         if sample_size > 10000:
             estimated_time = (sample_size / 1000) * 0.5  # ~0.5 min per 1000 emails with metadata
-            st.info(f"📥 Fetching {sample_size:,} emails (metadata only - fast mode)")
-            st.caption(f"⏱️ Estimated time: ~{estimated_time:.1f} minutes. Check Terminal for real-time progress.")
+            st.info(f"📥 Fetching {sample_size:,} emails (metadata only - fast mode) - Estimated time: ~{estimated_time:.1f} minutes")
 
-        # Create a placeholder for progress updates
-        progress_placeholder = st.empty()
+        # Define progress callback to update UI in real-time
+        def update_progress(current, total, message):
+            """Update Streamlit UI with current progress"""
+            # Calculate percentage
+            if total > 0:
+                percentage = int((current / total) * 100)
+                # Map to 30-50% range of overall progress
+                overall_progress = 30 + int((current / total) * 20)
+                progress_bar.progress(min(overall_progress, 50))
 
-        emails = ops.fetch_emails(max_results=sample_size, query=query)
+            # Update status text
+            status_text.text(message)
+
+        emails = ops.fetch_emails(max_results=sample_size, query=query, progress_callback=update_progress)
 
         if not emails:
             logger.warning(f"No emails found for account {account_name} with query '{query}'")
@@ -575,15 +582,22 @@ def process_with_claude_code_step1(account_name, max_emails, query):
         service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
         ops = GmailOperations(service, email)
 
-        # Fetch emails
-        status_text.text(f"Fetching up to {max_emails:,} emails (metadata only - fast)...")
-        progress_bar.progress(40)
+        # Fetch emails with real-time progress
         logger.info(f"Fetching {max_emails} emails with query: '{query}'")
 
         if max_emails > 10000:
-            st.info(f"📥 Fetching {max_emails:,} emails - check Terminal window for real-time progress!")
+            estimated_time = (max_emails / 1000) * 0.5
+            st.info(f"📥 Fetching {max_emails:,} emails (metadata only) - Estimated time: ~{estimated_time:.1f} minutes")
 
-        emails = ops.fetch_emails(max_results=max_emails, query=query)
+        # Define progress callback
+        def update_progress_step1(current, total, message):
+            if total > 0:
+                percentage = int((current / total) * 100)
+                overall_progress = 40 + int((current / total) * 20)
+                progress_bar.progress(min(overall_progress, 60))
+            status_text.text(message)
+
+        emails = ops.fetch_emails(max_results=max_emails, query=query, progress_callback=update_progress_step1)
 
         if not emails:
             st.warning("No emails found matching the query.")
@@ -764,12 +778,22 @@ def process_account(account_name, max_emails, query):
         label_map = ops.create_all_labels()
         logger.info(f"Created/verified {len(label_map)} labels")
 
-        # Fetch emails
-        status_text.text(f"Fetching up to {max_emails} emails...")
-        progress_bar.progress(30)
+        # Fetch emails with real-time progress
         logger.info(f"Fetching up to {max_emails} emails with query: '{query}'")
 
-        emails = ops.fetch_emails(max_results=max_emails, query=query)
+        if max_emails > 10000:
+            estimated_time = (max_emails / 1000) * 0.5
+            st.info(f"📥 Fetching {max_emails:,} emails - Estimated time: ~{estimated_time:.1f} minutes")
+
+        # Define progress callback
+        def update_progress_fetch(current, total, message):
+            if total > 0:
+                percentage = int((current / total) * 100)
+                overall_progress = 30 + int((current / total) * 20)
+                progress_bar.progress(min(overall_progress, 50))
+            status_text.text(message)
+
+        emails = ops.fetch_emails(max_results=max_emails, query=query, progress_callback=update_progress_fetch)
 
         if not emails:
             logger.warning(f"No emails found for account {account_name} with query '{query}'")
