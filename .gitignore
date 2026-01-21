@@ -13,4 +13,5 @@ client_secret.json
 *.log
 logs/
 .claude-processing/
+.email-cache/
 research/

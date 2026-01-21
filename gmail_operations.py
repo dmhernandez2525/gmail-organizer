@@ -1,6 +1,8 @@
 """Gmail API operations for fetching and organizing emails"""
 
 import base64
+import json
+from pathlib import Path
 from typing import List, Dict, Optional
 from googleapiclient.errors import HttpError
 from googleapiclient.http import BatchHttpRequest
@@ -16,6 +18,38 @@ class GmailOperations:
         self.service = service
         self.account_email = account_email
         self.labels_cache = None
+        self.checkpoint_dir = Path(__file__).parent / ".email-cache"
+        self.checkpoint_dir.mkdir(exist_ok=True)
+
+    def _get_checkpoint_path(self, query: str) -> Path:
+        """Get checkpoint file path for a specific query"""
+        # Sanitize query for filename
+        safe_query = query.replace(':', '_').replace(' ', '_').replace('/', '_') if query else 'all'
+        safe_email = self.account_email.replace('@', '_at_').replace('.', '_')
+        return self.checkpoint_dir / f"checkpoint_{safe_email}_{safe_query}.json"
+
+    def _load_checkpoint(self, checkpoint_path: Path) -> Dict:
+        """Load existing checkpoint if it exists"""
+        if checkpoint_path.exists():
+            try:
+                with open(checkpoint_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                from logger import logger
+                logger.warning(f"Could not load checkpoint: {e}")
+        return {"emails": [], "fetched_ids": set()}
+
+    def _save_checkpoint(self, checkpoint_path: Path, emails: List[Dict], fetched_ids: set):
+        """Save current progress to checkpoint"""
+        try:
+            with open(checkpoint_path, 'w') as f:
+                json.dump({
+                    "emails": emails,
+                    "fetched_ids": list(fetched_ids)
+                }, f)
+        except Exception as e:
+            from logger import logger
+            logger.warning(f"Could not save checkpoint: {e}")
 
     def fetch_emails(self, max_results=100, query="in:inbox", progress_callback=None) -> List[Dict]:
         """
@@ -79,11 +113,33 @@ class GmailOperations:
                 return []
 
             total_to_fetch = len(message_ids)
-            logger.info(f"Fetching details for {total_to_fetch} emails...")
-            print(f"Fetching details for {total_to_fetch} emails...")
+
+            # Load checkpoint to resume from where we left off
+            checkpoint_path = self._get_checkpoint_path(query)
+            checkpoint = self._load_checkpoint(checkpoint_path)
+            fetched_ids = set(checkpoint.get("fetched_ids", []))
+            emails = checkpoint.get("emails", [])
+
+            if fetched_ids:
+                logger.info(f"📂 Loaded checkpoint: {len(emails)} emails already fetched")
+                print(f"📂 Resuming from checkpoint: {len(emails):,} emails already fetched")
+
+            # Filter to only fetch emails we haven't fetched yet
+            message_ids = [msg_id for msg_id in message_ids if msg_id not in fetched_ids]
+            remaining_to_fetch = len(message_ids)
+
+            if remaining_to_fetch == 0:
+                logger.info(f"✓ All {total_to_fetch} emails already fetched from checkpoint!")
+                print(f"✓ All emails already fetched!")
+                if checkpoint_path.exists():
+                    checkpoint_path.unlink()  # Clean up checkpoint
+                return emails
+
+            logger.info(f"Fetching details for {remaining_to_fetch} emails ({len(emails)} already cached)...")
+            print(f"Fetching details for {remaining_to_fetch:,} new emails ({len(emails):,} already cached)...")
 
             if progress_callback:
-                progress_callback(0, total_to_fetch, f"Fetching details for {total_to_fetch:,} emails...")
+                progress_callback(len(emails), total_to_fetch, f"Fetching {remaining_to_fetch:,} new emails...")
 
             # Fetch email details using BATCH API for 100x speed improvement!
             # Process in batches of 100 (Gmail API limit per batch request)
@@ -105,10 +161,18 @@ class GmailOperations:
 
                 # Fetch this batch with retry logic for rate limits
                 max_retries = 5  # More retries to handle quota recovery
+                batch_success = False
                 for retry in range(max_retries):
                     try:
                         batch_emails = self._fetch_emails_batch(batch_ids)
                         emails.extend(batch_emails)
+
+                        # Mark these emails as fetched and save checkpoint
+                        for email in batch_emails:
+                            fetched_ids.add(email['email_id'])
+                        self._save_checkpoint(checkpoint_path, emails, fetched_ids)
+
+                        batch_success = True
                         break  # Success, exit retry loop
                     except HttpError as e:
                         if 'rateLimitExceeded' in str(e) or 'Quota exceeded' in str(e):
@@ -118,11 +182,13 @@ class GmailOperations:
                                 time.sleep(wait_time)
                             else:
                                 logger.error(f"Max retries reached for batch {batch_start}-{batch_end}, skipping...")
+                                # Save checkpoint even on failure so we don't retry this batch
+                                self._save_checkpoint(checkpoint_path, emails, fetched_ids)
                         else:
                             raise  # Re-raise non-rate-limit errors
 
-                # Progress updates
-                fetched_count = batch_end
+                # Progress updates (use actual email count, not batch_end)
+                fetched_count = len(emails)
                 if fetched_count % 500 == 0 or fetched_count == total_to_fetch:
                     logger.info(f"  Fetched {fetched_count}/{total_to_fetch} email details...")
                     print(f"  Fetched {fetched_count}/{total_to_fetch} emails...")
@@ -134,10 +200,16 @@ class GmailOperations:
                 # Rate limiting: 10 seconds between batches (6 batches/min, well under 30 limit)
                 time.sleep(retry_delay)
 
-            logger.info(f"Successfully fetched {len(emails)} emails")
+            logger.info(f"Successfully fetched {len(emails)} total emails")
+            print(f"✓ Fetch complete: {len(emails):,} total emails")
+
+            # Clean up checkpoint file on successful completion
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+                logger.info("Cleaned up checkpoint file")
 
             if progress_callback:
-                progress_callback(len(emails), len(emails), f"✓ Fetched {len(emails):,} emails!")
+                progress_callback(len(emails), total_to_fetch, f"✓ Fetched {len(emails):,} emails!")
 
         except HttpError as error:
             logger.error(f"Error fetching emails: {error}", exc_info=True)
