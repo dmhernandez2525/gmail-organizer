@@ -1,0 +1,69 @@
+Kind: captions
+Language: en
+Welcome<00:00:00.400><c> back</c><00:00:00.480><c> to</c><00:00:00.719><c> 30</c><00:00:01.040><c> agents</c><00:00:01.439><c> in</c><00:00:01.760><c> 30</c><00:00:02.080><c> days,</c>
+Welcome back to 30 agents in 30 days,
+Welcome back to 30 agents in 30 days,
+day<00:00:02.800><c> nine.</c><00:00:03.280><c> Today</c><00:00:03.520><c> I'm</c><00:00:03.760><c> building</c><00:00:03.919><c> an</c><00:00:04.080><c> AI</c><00:00:04.400><c> agent</c>
+day nine. Today I'm building an AI agent
+day nine. Today I'm building an AI agent
+to<00:00:04.799><c> help</c><00:00:04.880><c> me</c><00:00:05.120><c> manage</c><00:00:05.359><c> my</c><00:00:05.600><c> email</c><00:00:05.920><c> inbox.</c><00:00:06.480><c> The</c>
+to help me manage my email inbox. The
+to help me manage my email inbox. The
+idea<00:00:06.879><c> is</c><00:00:07.040><c> that</c><00:00:07.200><c> it's</c><00:00:07.359><c> automatically</c><00:00:07.919><c> going</c><00:00:08.080><c> to</c>
+idea is that it's automatically going to
+idea is that it's automatically going to
+classify<00:00:08.720><c> inbound</c><00:00:09.280><c> emails,</c><00:00:09.840><c> which</c><00:00:10.080><c> replaces</c>
+classify inbound emails, which replaces
+classify inbound emails, which replaces
+the<00:00:10.639><c> need</c><00:00:10.800><c> for</c><00:00:10.960><c> me</c><00:00:11.120><c> to</c><00:00:11.200><c> manually</c><00:00:11.599><c> assign</c><00:00:11.920><c> tags</c>
+the need for me to manually assign tags
+the need for me to manually assign tags
+if<00:00:12.480><c> they're</c><00:00:12.639><c> from</c><00:00:12.800><c> a</c><00:00:12.960><c> new</c><00:00:13.120><c> sender</c><00:00:13.519><c> or</c><00:00:13.840><c> maybe</c>
+if they're from a new sender or maybe
+if they're from a new sender or maybe
+about<00:00:14.320><c> a</c><00:00:14.480><c> new</c><00:00:14.639><c> topic.</c><00:00:15.120><c> Here's</c><00:00:15.440><c> how</c><00:00:15.519><c> it</c><00:00:15.759><c> works.</c>
+about a new topic. Here's how it works.
+about a new topic. Here's how it works.
+I've<00:00:16.320><c> created</c><00:00:16.560><c> this</c><00:00:16.720><c> Chrome</c><00:00:17.039><c> extension,</c>
+I've created this Chrome extension,
+I've created this Chrome extension,
+which<00:00:17.600><c> I</c><00:00:17.760><c> can</c><00:00:17.920><c> activate</c><00:00:18.320><c> and</c><00:00:18.640><c> leave</c><00:00:18.960><c> running.</c>
+which I can activate and leave running.
+which I can activate and leave running.
+Every<00:00:19.600><c> time</c><00:00:19.760><c> I</c><00:00:19.920><c> get</c><00:00:20.000><c> a</c><00:00:20.160><c> new</c><00:00:20.320><c> email,</c><00:00:20.640><c> an</c><00:00:20.800><c> AI</c>
+Every time I get a new email, an AI
+Every time I get a new email, an AI
+agent<00:00:21.439><c> is</c><00:00:21.600><c> going</c><00:00:21.680><c> to</c><00:00:21.840><c> try</c><00:00:22.000><c> to</c><00:00:22.160><c> figure</c><00:00:22.320><c> out</c>
+agent is going to try to figure out
+agent is going to try to figure out
+which<00:00:22.880><c> category</c><00:00:23.279><c> it</c><00:00:23.439><c> sits</c><00:00:23.680><c> in.</c><00:00:24.000><c> And</c><00:00:24.160><c> if</c><00:00:24.320><c> it</c>
+which category it sits in. And if it
+which category it sits in. And if it
+needs<00:00:24.560><c> to,</c><00:00:24.800><c> it</c><00:00:25.039><c> can</c><00:00:25.119><c> also</c><00:00:25.359><c> search</c><00:00:25.600><c> for</c><00:00:25.760><c> similar</c>
+needs to, it can also search for similar
+needs to, it can also search for similar
+emails<00:00:26.400><c> that</c><00:00:26.560><c> it's</c><00:00:26.720><c> received</c><00:00:27.039><c> in</c><00:00:27.199><c> the</c><00:00:27.279><c> past</c><00:00:27.680><c> to</c>
+emails that it's received in the past to
+emails that it's received in the past to
+try<00:00:28.000><c> and</c><00:00:28.160><c> help</c><00:00:28.320><c> it</c><00:00:28.480><c> with</c><00:00:28.640><c> its</c><00:00:28.880><c> decision.</c><00:00:29.359><c> Once</c>
+try and help it with its decision. Once
+try and help it with its decision. Once
+it's<00:00:29.760><c> done,</c><00:00:30.000><c> it</c><00:00:30.160><c> assigns</c><00:00:30.480><c> a</c><00:00:30.720><c> category,</c><00:00:31.119><c> saves</c>
+it's done, it assigns a category, saves
+it's done, it assigns a category, saves
+it<00:00:31.439><c> in</c><00:00:31.599><c> the</c><00:00:31.679><c> local</c><00:00:31.920><c> database,</c><00:00:32.480><c> and</c><00:00:32.719><c> displays</c>
+it in the local database, and displays
+it in the local database, and displays
+it<00:00:33.280><c> on</c><00:00:33.440><c> the</c><00:00:33.520><c> screen.</c><00:00:33.920><c> So,</c><00:00:34.079><c> my</c><00:00:34.320><c> emails</c><00:00:34.559><c> are</c>
+it on the screen. So, my emails are
+it on the screen. So, my emails are
+sorted,<00:00:35.120><c> and</c><00:00:35.280><c> I</c><00:00:35.520><c> didn't</c><00:00:35.680><c> need</c><00:00:35.840><c> to</c><00:00:35.920><c> set</c><00:00:36.079><c> up</c><00:00:36.239><c> any</c>
+sorted, and I didn't need to set up any
+sorted, and I didn't need to set up any
+tags.<00:00:36.960><c> Visit</c><00:00:37.280><c> this</c><00:00:37.440><c> link,</c><00:00:37.680><c> and</c><00:00:37.840><c> you</c><00:00:38.000><c> can</c>
+tags. Visit this link, and you can
+tags. Visit this link, and you can
+download<00:00:38.399><c> the</c><00:00:38.559><c> code</c><00:00:38.719><c> for</c><00:00:38.960><c> free.</c><00:00:39.120><c> Now</c><00:00:39.440><c> follow</c>
+download the code for free. Now follow
+download the code for free. Now follow
+to<00:00:39.760><c> see</c><00:00:39.920><c> me</c><00:00:40.079><c> build</c><00:00:40.320><c> more</c><00:00:40.480><c> agents.</c>
