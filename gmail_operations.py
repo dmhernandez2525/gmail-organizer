@@ -89,15 +89,21 @@ class GmailOperations:
             # Process in batches of 100 (Gmail API limit per batch request)
             # Gmail API limit: 15,000 quota units/min, messages.get = 5 units
             # Max: 3,000 messages/min = 30 batches/min = 1 batch every 2 seconds
+            # Using 3.5s for safety margin + quota recovery from previous runs
             batch_size = 100
-            retry_delay = 2.5  # Start with 2.5 seconds between batches
+            retry_delay = 3.5  # Conservative delay between batches
 
             for batch_start in range(0, len(message_ids), batch_size):
                 batch_end = min(batch_start + batch_size, len(message_ids))
                 batch_ids = message_ids[batch_start:batch_end]
 
+                # First batch: wait longer to let quota recover from any previous runs
+                if batch_start == 0:
+                    logger.info("Starting batch fetching, waiting 10s for quota recovery...")
+                    time.sleep(10)
+
                 # Fetch this batch with retry logic for rate limits
-                max_retries = 3
+                max_retries = 5  # More retries to handle quota recovery
                 for retry in range(max_retries):
                     try:
                         batch_emails = self._fetch_emails_batch(batch_ids)
@@ -106,11 +112,11 @@ class GmailOperations:
                     except HttpError as e:
                         if 'rateLimitExceeded' in str(e) or 'Quota exceeded' in str(e):
                             if retry < max_retries - 1:
-                                wait_time = retry_delay * (2 ** retry)  # Exponential backoff
-                                logger.warning(f"Rate limit hit, waiting {wait_time:.1f}s before retry...")
+                                wait_time = retry_delay * (3 ** retry)  # Steeper exponential backoff
+                                logger.warning(f"Rate limit hit (retry {retry + 1}/{max_retries}), waiting {wait_time:.1f}s...")
                                 time.sleep(wait_time)
                             else:
-                                logger.error(f"Max retries reached for batch, some emails may be missing")
+                                logger.error(f"Max retries reached for batch {batch_start}-{batch_end}, skipping...")
                         else:
                             raise  # Re-raise non-rate-limit errors
 
@@ -124,7 +130,7 @@ class GmailOperations:
                 if progress_callback:
                     progress_callback(fetched_count, total_to_fetch, f"Fetched {fetched_count:,}/{total_to_fetch:,} emails")
 
-                # Rate limiting: 2.5 seconds between batches (30 batches/min max)
+                # Rate limiting: 3.5 seconds between batches (~17 batches/min, well under 30 limit)
                 time.sleep(retry_delay)
 
             logger.info(f"Successfully fetched {len(emails)} emails")
