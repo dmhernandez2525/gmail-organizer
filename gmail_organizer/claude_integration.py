@@ -5,11 +5,11 @@ import json
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
-from logger import setup_logger
+from .logger import setup_logger
 
 logger = setup_logger('claude_code')
 
-PROCESSING_DIR = Path(__file__).parent / ".claude-processing"
+PROCESSING_DIR = Path(__file__).parent.parent / ".claude-processing"
 
 
 def check_claude_code_installed() -> bool:

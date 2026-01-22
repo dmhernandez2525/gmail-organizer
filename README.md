@@ -152,22 +152,25 @@ npm install -g @anthropic-ai/claude-code
 
 ### Usage
 
-#### Option 1: macOS App (Recommended)
-
-Double-click `Gmail Organizer.app` on your Desktop
-
-#### Option 2: Command Line
+#### Option 1: Launch Script
 
 ```bash
-cd ~/Desktop/Projects/PersonalProjects/gmail-organizer
-./launch_gmail_organizer.sh
+cd gmail-organizer
+./scripts/launch_gmail_organizer.sh
 ```
 
-#### Option 3: Streamlit Direct
+#### Option 2: Streamlit Direct
 
 ```bash
 source venv/bin/activate
-streamlit run frontend.py
+streamlit run app.py
+```
+
+#### Option 3: Python Package
+
+```bash
+pip install -e .
+gmail-organizer
 ```
 
 ### First-Time Setup
@@ -212,28 +215,40 @@ streamlit run frontend.py
 
 ```
 gmail-organizer/
-├── .claude-processing/       # Git-ignored: Email exports for Claude Code
-├── .email-cache/             # Git-ignored: Checkpoint files for resumable fetching
-├── .sync-state/              # Git-ignored: Incremental sync state (historyId, cached emails)
-├── .env                       # Git-ignored: API keys
-├── .env.example              # Template for environment variables
-├── client_secret.json        # Git-ignored: Google OAuth credentials
-├── credentials/              # Git-ignored: Saved Gmail OAuth tokens
-├── logs/                     # Git-ignored: Application logs
-├── venv/                     # Git-ignored: Python virtual environment
-├── Gmail Organizer.app       # macOS launcher app
-├── launch_gmail_organizer.sh # Launch script with auto-restart
+├── gmail_organizer/          # Python package
+│   ├── __init__.py           # Package exports
+│   ├── auth.py               # Multi-account OAuth manager
+│   ├── operations.py         # Gmail API operations + incremental sync
+│   ├── classifier.py         # AI classification with Anthropic
+│   ├── analyzer.py           # Inbox pattern analysis
+│   ├── claude_integration.py # Claude Code CLI integration
+│   ├── config.py             # Category definitions
+│   ├── logger.py             # Logging configuration
+│   └── main.py               # CLI entry point
+├── scripts/                  # Launcher scripts
+│   ├── launch_gmail_organizer.sh
+│   └── GmailOrganizer.applescript
+├── website/                  # React portfolio site
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── tests/                    # Test suite
+├── app.py                    # Streamlit web interface
+├── pyproject.toml            # Python project configuration
 ├── requirements.txt          # Python dependencies
-├── frontend.py              # Streamlit web interface
-├── gmail_auth.py            # Multi-account OAuth manager
-├── gmail_operations.py      # Gmail API operations + incremental sync
-├── email_classifier.py      # AI classification with Anthropic
-├── email_analyzer.py        # Inbox pattern analysis
-├── claude_code_integration.py # Claude Code CLI integration
-├── config.py                # Category definitions
-├── logger.py                # Logging configuration
-└── README.md                # This file
+├── render.yaml               # Render deployment config
+└── README.md
 ```
+
+**Git-ignored (local only):**
+- `.env` - API keys
+- `credentials/` - Gmail OAuth tokens
+- `client_secret.json` - Google OAuth credentials
+- `.claude-processing/` - Email exports for Claude Code
+- `.email-cache/` - Checkpoint files
+- `.sync-state/` - Incremental sync state
+- `logs/` - Application logs
+- `venv/` - Python virtual environment
 
 ## ⚙️ Configuration
 

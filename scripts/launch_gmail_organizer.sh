@@ -3,8 +3,9 @@
 # Gmail Organizer Launcher
 # Double-click this to launch the app
 
-# Get the directory where this script is located
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Get the directory where this script is located, then go to project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$DIR"
 
 # Function to cleanup on exit
@@ -79,7 +80,7 @@ BROWSER_OPENED=false
 
 while true; do
     # Start Streamlit in the background
-    $STREAMLIT_CMD run frontend.py --server.headless true --server.port 8501 &
+    $STREAMLIT_CMD run app.py --server.headless true --server.port 8501 &
     STREAMLIT_PID=$!
 
     # Wait for server to start
@@ -92,7 +93,7 @@ while true; do
         echo ""
         echo "Try running manually:"
         echo "  cd $DIR"
-        echo "  streamlit run frontend.py"
+        echo "  streamlit run app.py"
         read -p "Press Enter to exit..."
         exit 1
     fi

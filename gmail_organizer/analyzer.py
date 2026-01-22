@@ -3,7 +3,7 @@
 import anthropic
 from typing import List, Dict
 from collections import Counter
-from config import ANTHROPIC_API_KEY
+from .config import ANTHROPIC_API_KEY
 
 
 class EmailAnalyzer:

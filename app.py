@@ -2,13 +2,13 @@
 
 import streamlit as st
 import pandas as pd
-from gmail_auth import GmailAuthManager
-from gmail_operations import GmailOperations
-from email_classifier import EmailClassifier
-from email_analyzer import EmailAnalyzer
-from config import CATEGORIES
-from logger import setup_logger
-import claude_code_integration as claude_code
+from gmail_organizer.auth import GmailAuthManager
+from gmail_organizer.operations import GmailOperations
+from gmail_organizer.classifier import EmailClassifier
+from gmail_organizer.analyzer import EmailAnalyzer
+from gmail_organizer.config import CATEGORIES
+from gmail_organizer.logger import setup_logger
+from gmail_organizer import claude_integration as claude_code
 import time
 import json
 import os

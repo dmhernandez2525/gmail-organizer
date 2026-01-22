@@ -2,7 +2,7 @@
 
 import anthropic
 from typing import Dict, List, Tuple
-from config import ANTHROPIC_API_KEY, CLASSIFICATION_PROMPT, CATEGORIES
+from .config import ANTHROPIC_API_KEY, CLASSIFICATION_PROMPT, CATEGORIES
 
 
 class EmailClassifier:

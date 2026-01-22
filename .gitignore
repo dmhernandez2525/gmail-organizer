@@ -1,4 +1,9 @@
+# Environment
 .env
+.env.local
+.env.*.local
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,13 +11,44 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials & secrets
 credentials/
 token_*.json
 client_secret.json
-.DS_Store
+
+# Logs
 *.log
 logs/
+
+# App data (local only)
 .claude-processing/
 .email-cache/
 .sync-state/
+
+# Research (not for public)
 research/
+
+# Node (website)
+website/node_modules/
+website/dist/

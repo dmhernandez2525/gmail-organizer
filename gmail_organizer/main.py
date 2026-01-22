@@ -2,10 +2,10 @@
 
 import sys
 from pathlib import Path
-from gmail_auth import GmailAuthManager
-from gmail_operations import GmailOperations
-from email_classifier import EmailClassifier
-from config import BATCH_SIZE, MAX_EMAILS, CATEGORIES
+from .auth import GmailAuthManager
+from .operations import GmailOperations
+from .classifier import EmailClassifier
+from .config import BATCH_SIZE, MAX_EMAILS, CATEGORIES
 
 
 class GmailOrganizer:

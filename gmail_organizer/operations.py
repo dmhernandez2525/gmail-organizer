@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 from googleapiclient.errors import HttpError
 from googleapiclient.http import BatchHttpRequest
 from email.mime.text import MIMEText
-from config import CATEGORIES, BATCH_SIZE
+from .config import CATEGORIES, BATCH_SIZE
 import time
 
 
