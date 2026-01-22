@@ -1,4 +1,4 @@
-"""Streamlit Frontend for Gmail Organizer"""
+"""Streamlit Frontend for Gmail Organizer - Multi-Account Parallel Sync UI"""
 
 import streamlit as st
 import pandas as pd
@@ -8,10 +8,9 @@ from gmail_organizer.classifier import EmailClassifier
 from gmail_organizer.analyzer import EmailAnalyzer
 from gmail_organizer.config import CATEGORIES
 from gmail_organizer.logger import setup_logger
+from gmail_organizer.sync_manager import SyncManager
 from gmail_organizer import claude_integration as claude_code
 import time
-import json
-import os
 
 # Set up logging
 logger = setup_logger('frontend')
@@ -22,9 +21,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize session state
+# ==================== SESSION STATE INIT ====================
+
 if 'auth_manager' not in st.session_state:
     st.session_state.auth_manager = GmailAuthManager()
+
+if 'sync_manager' not in st.session_state:
+    st.session_state.sync_manager = SyncManager()
 
 if 'classifier' not in st.session_state:
     st.session_state.classifier = EmailClassifier()
@@ -35,44 +38,95 @@ if 'analyzer' not in st.session_state:
 if 'processing_results' not in st.session_state:
     st.session_state.processing_results = {}
 
+# Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
+    st.session_state.analysis_results = {}  # account_name -> analysis dict
 
 if 'suggested_categories' not in st.session_state:
-    st.session_state.suggested_categories = None
+    st.session_state.suggested_categories = {}  # account_name -> suggestions dict
 
 
-def main():
-    # Log session start
-    if 'session_logged' not in st.session_state:
-        logger.info("=" * 60)
-        logger.info("Gmail Organizer session started")
-        logger.info("=" * 60)
-        st.session_state.session_logged = True
+# ==================== ACCOUNT REGISTRATION ====================
 
-    st.title("📧 Gmail Organizer")
-    st.markdown("AI-powered email management for multiple Gmail accounts")
+def register_all_accounts():
+    """Register all authenticated accounts with SyncManager on first run"""
+    if st.session_state.get('_accounts_registered'):
+        return
 
-    # Sidebar
+    auth_manager = st.session_state.auth_manager
+    sync_mgr = st.session_state.sync_manager
+
+    try:
+        accounts = auth_manager.list_authenticated_accounts()
+        for name, email in accounts:
+            try:
+                service, _, _ = auth_manager.authenticate_account(name)
+                sync_mgr.register_account(name, service, email)
+            except Exception as e:
+                logger.warning(f"Could not register account {name}: {e}")
+    except Exception as e:
+        logger.error(f"Error loading accounts: {e}")
+
+    st.session_state._accounts_registered = True
+
+
+# ==================== SIDEBAR ====================
+
+def render_sidebar():
+    """Render sidebar with account list, sync badges, and controls"""
+    sync_mgr = st.session_state.sync_manager
+
     with st.sidebar:
         st.header("Accounts")
 
-        # List authenticated accounts
         accounts = st.session_state.auth_manager.list_authenticated_accounts()
+        statuses = sync_mgr.get_all_statuses()
 
         if accounts:
-            st.success(f"{len(accounts)} account(s) authenticated")
-
             for name, email in accounts:
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.text(f"{name}")
-                    st.caption(email)
-                with col2:
-                    if st.button("❌", key=f"remove_{name}"):
-                        st.session_state.auth_manager.remove_account(name)
-                        st.rerun()
+                status = statuses.get(name)
+                state = status.state if status else "idle"
 
+                # Status badge
+                badge_map = {
+                    "complete": "🟢",
+                    "syncing": "🔵",
+                    "idle": "⚪",
+                    "error": "🔴"
+                }
+                badge = badge_map.get(state, "⚪")
+
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"{badge} **{name}**")
+                    if status and status.emails_data:
+                        st.caption(f"{email} ({len(status.emails_data):,} emails)")
+                    else:
+                        st.caption(email)
+
+                with col2:
+                    if state == "syncing":
+                        st.caption("⏳")
+                    else:
+                        if st.button("🔄", key=f"sync_{name}", help=f"Sync {name}"):
+                            sync_mgr.start_sync(name)
+                            st.rerun()
+
+                # Show progress bar when syncing
+                if state == "syncing" and status:
+                    if status.total > 0:
+                        st.progress(min(status.progress / status.total, 1.0))
+                    st.caption(status.message)
+
+            st.markdown("---")
+
+            # Sync All button
+            if sync_mgr.is_any_syncing():
+                st.info("Syncing in progress...")
+            else:
+                if st.button("🔄 Sync All Accounts", use_container_width=True):
+                    sync_mgr.start_all_syncs()
+                    st.rerun()
         else:
             st.info("No accounts authenticated yet")
 
@@ -82,632 +136,404 @@ def main():
         if st.button("➕ Add Gmail Account", use_container_width=True):
             st.session_state.show_add_account = True
 
-        # Add account form
         if st.session_state.get('show_add_account', False):
             with st.form("add_account_form"):
-                account_name = st.text_input("Account name", placeholder="e.g., personal, work, job-search")
-
+                account_name = st.text_input(
+                    "Account name",
+                    placeholder="e.g., personal, work"
+                )
                 submitted = st.form_submit_button("Authenticate")
-
                 if submitted and account_name:
                     try:
                         with st.spinner("Opening browser for authentication..."):
                             service, email, name = st.session_state.auth_manager.authenticate_account(account_name)
-                            st.success(f"✓ Authenticated: {email}")
+                            sync_mgr.register_account(name, service, email)
+                            st.success(f"Authenticated: {email}")
                             st.session_state.show_add_account = False
+                            st.session_state._accounts_registered = False
                             time.sleep(1)
                             st.rerun()
                     except Exception as e:
                         st.error(f"Authentication failed: {e}")
 
-    # Main content
-    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Analyze First", "📥 Process Emails", "📊 Results", "⚙️ Settings"])
-
-    with tab1:
-        analyze_tab(accounts)
-
-    with tab2:
-        process_emails_tab(accounts)
-
-    with tab3:
-        results_tab()
-
-    with tab4:
-        settings_tab()
+        # Remove account
+        if accounts and len(accounts) > 0:
+            st.markdown("---")
+            with st.expander("Remove account"):
+                for name, email in accounts:
+                    if st.button(f"Remove {name}", key=f"remove_{name}"):
+                        st.session_state.auth_manager.remove_account(name)
+                        st.session_state._accounts_registered = False
+                        st.rerun()
 
 
-def analyze_tab(accounts):
-    """Analyze inbox first to discover patterns"""
+# ==================== DASHBOARD TAB ====================
+
+def dashboard_tab():
+    """Overview of all accounts with sync status and controls"""
+    st.header("Dashboard")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
     if not accounts:
-        st.warning("No accounts authenticated. Please add a Gmail account from the sidebar.")
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
         return
 
-    st.header("🔍 Analyze Your Inbox First")
-    st.markdown("""
-    **Smart approach:** Let AI analyze your actual emails to discover patterns,
-    then suggest categories based on what you REALLY have in your inbox.
-    """)
+    statuses = sync_mgr.get_all_statuses()
+
+    # Summary metrics
+    total_emails = sum(len(s.emails_data) for s in statuses.values())
+    synced_count = sum(1 for s in statuses.values() if s.state == "complete")
+    syncing_count = sum(1 for s in statuses.values() if s.state == "syncing")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Accounts", len(accounts))
+    with col2:
+        st.metric("Synced", synced_count)
+    with col3:
+        st.metric("Syncing", syncing_count)
+    with col4:
+        st.metric("Total Emails", f"{total_emails:,}")
+
+    st.markdown("---")
+
+    # Account cards
+    for name, email in accounts:
+        status = statuses.get(name, None)
+        state = status.state if status else "idle"
+
+        with st.container():
+            col1, col2, col3 = st.columns([3, 2, 1])
+
+            with col1:
+                badge_map = {
+                    "complete": "🟢 Synced",
+                    "syncing": "🔵 Syncing",
+                    "idle": "⚪ Idle",
+                    "error": "🔴 Error"
+                }
+                st.subheader(f"{badge_map.get(state, '⚪ Idle')} | {name}")
+                st.caption(email)
+
+            with col2:
+                if status and status.emails_data:
+                    st.metric("Emails", f"{len(status.emails_data):,}")
+                if status and status.last_sync_time:
+                    st.caption(f"Last sync: {status.last_sync_time[:19]}")
+
+            with col3:
+                if state == "syncing":
+                    if status and status.total > 0:
+                        st.progress(min(status.progress / status.total, 1.0))
+                    st.caption(status.message if status else "")
+                elif state == "error":
+                    st.error(status.error if status else "Unknown error")
+                    if st.button("Retry", key=f"retry_{name}"):
+                        sync_mgr.start_sync(name)
+                        st.rerun()
+                else:
+                    if st.button("Sync", key=f"dash_sync_{name}"):
+                        sync_mgr.start_sync(name)
+                        st.rerun()
+
+            st.markdown("---")
+
+    # Sync All button at bottom
+    if not sync_mgr.is_any_syncing():
+        if st.button("🔄 Sync All Accounts", type="primary", use_container_width=True, key="dash_sync_all"):
+            sync_mgr.start_all_syncs()
+            st.rerun()
+
+
+# ==================== ANALYZE TAB ====================
+
+def analyze_tab():
+    """Pattern analysis using already-synced data (no re-fetching)"""
+    st.header("Analyze Inbox Patterns")
+    st.markdown("Analyze your synced emails to discover patterns and suggest categories.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    # Filter to accounts with synced data
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
 
     # Account selection
-    account_options = {f"{name} ({email})": name for name, email in accounts}
-    selected_account = st.selectbox(
-        "Select account to analyze",
-        options=list(account_options.keys())
-    )
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account to analyze", list(account_options.keys()))
+    account_name = account_options[selected_label]
 
-    account_name = account_options[selected_account]
-
-    # Get total email count for the selected account
-    # Cache the count to avoid repeated API calls
-    cache_key = f"email_count_{account_name}"
-
-    if cache_key not in st.session_state:
-        try:
-            service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
-            ops = GmailOperations(service, email)
-
-            # Get count based on scan option (will be set below)
-            if 'scan_option_analyze' not in st.session_state:
-                st.session_state.scan_option_analyze = "All Mail (Inbox + Sent + Archives)"
-
-            # Determine query for count
-            scan_queries = {
-                "All Mail (Inbox + Sent + Archives)": "",
-                "Inbox Only": "in:inbox",
-                "Unread Only": "is:unread"
-            }
-            count_query = scan_queries.get(st.session_state.scan_option_analyze, "")
-            total_emails = ops.get_email_count(query=count_query)
-
-            # Cache the result
-            st.session_state[cache_key] = total_emails
-            logger.info(f"Account {account_name} has {total_emails} emails (query: '{count_query}')")
-        except Exception as e:
-            logger.error(f"Could not get email count: {e}", exc_info=True)
-            st.session_state[cache_key] = 1000  # Fallback
-            total_emails = 1000
-    else:
-        total_emails = st.session_state[cache_key]
+    emails = sync_mgr.get_emails(account_name)
+    st.success(f"Using {len(emails):,} synced emails (no re-fetching needed)")
 
     col1, col2 = st.columns(2)
-
     with col1:
-        # Option to choose between All or Custom
-        analyze_option = st.radio(
-            "Emails to analyze",
-            options=[f"All ({total_emails:,} emails)", "Custom amount"],
-            index=0,
-            key="analyze_amount_option",
-            help="Analyzing all emails gives the best category suggestions"
+        job_search_focus = st.checkbox(
+            "Prioritize job-related categories",
+            value=True
         )
-
-        if "Custom amount" in analyze_option:
-            sample_size = st.number_input(
-                "Number of emails",
-                min_value=100,
-                max_value=total_emails,
-                value=min(500, total_emails),
-                step=100,
-                key="analyze_custom_amount"
-            )
-        else:
-            # Analyze all emails
-            sample_size = total_emails
-            if total_emails > 5000:
-                st.caption(f"ℹ️ Analyzing {total_emails:,} emails may take several minutes. Consider testing with fewer first.")
-
     with col2:
-        scan_option = st.selectbox(
-            "What to scan",
-            options=[
-                "All Mail (Inbox + Sent + Archives)",
-                "Inbox Only",
-                "Unread Only",
-                "Custom Query"
-            ],
-            index=0,  # Default to "All Mail"
-            help="Scan everything for best category suggestions",
-            key="scan_option_analyze"
+        max_analyze = st.number_input(
+            "Max emails to analyze",
+            min_value=100,
+            max_value=len(emails),
+            value=min(1000, len(emails)),
+            step=100,
+            help="More emails = better pattern detection"
         )
 
-        # Map selection to query
-        query_map = {
-            "All Mail (Inbox + Sent + Archives)": "",
-            "Inbox Only": "in:inbox",
-            "Unread Only": "is:unread",
-            "Custom Query": None
-        }
+    if st.button("Analyze Patterns", type="primary", use_container_width=True):
+        with st.spinner("Analyzing email patterns..."):
+            # Run analyzer on synced data
+            sample = emails[:max_analyze]
+            analysis = st.session_state.analyzer.analyze_emails(sample)
+            st.session_state.analysis_results[account_name] = analysis
 
-        query = query_map.get(scan_option, "")
-
-        if scan_option == "Custom Query":
-            query = st.text_input(
-                "Gmail search query",
-                value="in:inbox",
-                help="e.g., 'from:linkedin.com', 'after:2024/01/01'"
+            # Get AI suggestions
+            suggestions = st.session_state.analyzer.suggest_categories(
+                analysis, job_search_focused=job_search_focus
             )
+            st.session_state.suggested_categories[account_name] = suggestions
+            logger.info(f"Analysis complete for {account_name}: {analysis['unique_senders']} unique senders")
+            st.rerun()
 
-    job_search_focus = st.checkbox(
-        "I'm job searching (prioritize job-related categories)",
-        value=True
-    )
-
-    # Analyze button
-    if st.button("🔍 Analyze Inbox", type="primary", use_container_width=True):
-        logger.info(f"User clicked Analyze: {sample_size} emails from query '{query}'")
-        analyze_inbox(account_name, sample_size, query, job_search_focus)
-
-    # Show results if available
-    if st.session_state.analysis_results:
+    # Show results if available for this account
+    if account_name in st.session_state.analysis_results:
         st.markdown("---")
-        show_analysis_results()
+        show_analysis_results(account_name)
 
-    if st.session_state.suggested_categories:
+    if account_name in st.session_state.suggested_categories:
         st.markdown("---")
-        show_suggested_categories()
+        show_suggested_categories(account_name)
 
 
-def analyze_inbox(account_name, sample_size, query, job_search_focus):
-    """Analyze inbox and suggest categories"""
-    logger.info(f"Starting inbox analysis for {account_name} - {sample_size} emails, query: '{query}'")
+def show_analysis_results(account_name: str):
+    """Display analysis results for a specific account"""
+    st.subheader("Inbox Analysis")
 
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    try:
-        # Authenticate
-        status_text.text("Authenticating...")
-        progress_bar.progress(10)
-        logger.info(f"Authenticating account: {account_name}")
-
-        service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
-        ops = GmailOperations(service, email)
-
-        # Fetch sample emails with real-time progress updates
-        logger.info(f"Fetching {sample_size} emails with query: '{query}'")
-
-        # Show info about large fetches with time estimate
-        if sample_size > 10000:
-            estimated_time = (sample_size / 1000) * 0.5  # ~0.5 min per 1000 emails with metadata
-            st.info(f"📥 Fetching {sample_size:,} emails (metadata only - fast mode) - Estimated time: ~{estimated_time:.1f} minutes")
-
-        # Define progress callback to update UI in real-time
-        def update_progress(current, total, message):
-            """Update Streamlit UI with current progress"""
-            # Calculate percentage
-            if total > 0:
-                percentage = int((current / total) * 100)
-                # Map to 30-50% range of overall progress
-                overall_progress = 30 + int((current / total) * 20)
-                progress_bar.progress(min(overall_progress, 50))
-
-            # Update status text
-            status_text.text(message)
-
-        emails = ops.fetch_emails(max_results=sample_size, query=query, progress_callback=update_progress)
-
-        if not emails:
-            logger.warning(f"No emails found for account {account_name} with query '{query}'")
-            st.warning("No emails found to analyze.")
-            return
-
-        logger.info(f"✓ Fetched {len(emails)} emails")
-        progress_bar.progress(40)
-        status_text.text(f"✓ Fetched {len(emails):,} emails!")
-        st.success(f"✓ Successfully fetched {len(emails):,} emails (metadata only - super fast!)")
-
-        # Analyze patterns
-        status_text.text("Analyzing email patterns...")
-        progress_bar.progress(50)
-        logger.info("Analyzing email patterns...")
-
-        analysis = st.session_state.analyzer.analyze_emails(emails)
-        st.session_state.analysis_results = analysis
-        logger.info(f"Analysis complete: {analysis['unique_senders']} unique senders, {analysis['total_emails']} emails")
-
-        # Get AI suggestions
-        status_text.text("Getting AI category suggestions...")
-        progress_bar.progress(70)
-        logger.info("Getting AI category suggestions...")
-
-        suggestions = st.session_state.analyzer.suggest_categories(
-            analysis,
-            job_search_focused=job_search_focus
-        )
-        st.session_state.suggested_categories = suggestions
-        logger.info(f"AI suggested {len(suggestions.get('categories', []))} categories")
-
-        progress_bar.progress(100)
-        status_text.text("✓ Analysis complete!")
-        logger.info("Analysis complete!")
-
-        st.success("Analysis complete! Review the suggestions below.")
-        st.rerun()
-
-    except Exception as e:
-        logger.error(f"Error during analysis: {e}", exc_info=True)
-        st.error(f"Error during analysis: {e}")
-        import traceback
-        st.code(traceback.format_exc())
-
-
-def show_analysis_results():
-    """Display analysis results"""
-    st.subheader("📊 Inbox Analysis")
-
-    analysis = st.session_state.analysis_results
+    analysis = st.session_state.analysis_results[account_name]
 
     col1, col2, col3 = st.columns(3)
-
     with col1:
-        st.metric("Total Emails Analyzed", analysis['total_emails'])
-
+        st.metric("Total Emails Analyzed", f"{analysis['total_emails']:,}")
     with col2:
-        st.metric("Unique Senders", analysis['unique_senders'])
-
+        st.metric("Unique Senders", f"{analysis['unique_senders']:,}")
     with col3:
-        avg_per_sender = analysis['total_emails'] / max(analysis['unique_senders'], 1)
-        st.metric("Avg per Sender", f"{avg_per_sender:.1f}")
+        avg = analysis['total_emails'] / max(analysis['unique_senders'], 1)
+        st.metric("Avg per Sender", f"{avg:.1f}")
 
-    # Top senders
-    with st.expander("📧 Top Senders"):
-        sender_data = []
-        for sender, count in analysis['top_senders'][:15]:
-            sender_data.append({"Sender": sender[:50], "Emails": count})
-        st.dataframe(pd.DataFrame(sender_data), use_container_width=True)
+    with st.expander("Top Senders"):
+        sender_data = [{"Sender": s[:50], "Emails": c} for s, c in analysis['top_senders'][:15]]
+        if sender_data:
+            st.dataframe(pd.DataFrame(sender_data), use_container_width=True)
 
-    # Top domains
-    with st.expander("🌐 Top Domains"):
-        domain_data = []
-        for domain, count in analysis['top_domains'][:15]:
-            domain_data.append({"Domain": domain, "Emails": count})
-        st.dataframe(pd.DataFrame(domain_data), use_container_width=True)
+    with st.expander("Top Domains"):
+        domain_data = [{"Domain": d, "Emails": c} for d, c in analysis['top_domains'][:15]]
+        if domain_data:
+            st.dataframe(pd.DataFrame(domain_data), use_container_width=True)
 
 
-def show_suggested_categories():
-    """Display AI-suggested categories"""
-    st.subheader("🤖 AI-Suggested Categories")
+def show_suggested_categories(account_name: str):
+    """Display AI-suggested categories for a specific account"""
+    st.subheader("AI-Suggested Categories")
 
-    suggestions = st.session_state.suggested_categories
+    suggestions = st.session_state.suggested_categories[account_name]
 
     if 'summary' in suggestions:
         st.info(suggestions['summary'])
 
-    st.markdown("**Review and approve these categories:**")
-
     categories = suggestions.get('categories', [])
-
-    # Show each category
     for i, cat in enumerate(categories):
-        with st.expander(f"📁 {cat['name']} ({cat['estimated_volume']} volume)", expanded=i < 3):
+        with st.expander(f"{cat['name']} ({cat['estimated_volume']} volume)", expanded=i < 3):
             st.markdown(f"**Description:** {cat['description']}")
             st.markdown(f"**Why:** {cat['reasoning']}")
 
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.text_input(
-                    "Edit category name",
-                    value=cat['name'],
-                    key=f"cat_name_{i}"
-                )
-            with col2:
-                st.selectbox(
-                    "Volume",
-                    options=["high", "medium", "low"],
-                    index=["high", "medium", "low"].index(cat['estimated_volume']),
-                    key=f"cat_volume_{i}"
-                )
-
-    # Approve button
-    st.markdown("---")
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        st.markdown("**Ready to use these categories?**")
-        st.caption("These will be created as Gmail labels and used for categorization")
-
-    with col2:
-        if st.button("✅ Approve & Continue", type="primary", use_container_width=True):
-            st.session_state.approved_categories = categories
-            st.success("Categories approved! Go to 'Process Emails' tab to apply them.")
-            # TODO: Update config.py with these categories
+    if st.button("Approve Categories", type="primary", key=f"approve_{account_name}"):
+        st.session_state.setdefault('approved_categories', {})[account_name] = categories
+        st.success("Categories approved! Go to Process tab to apply them.")
 
 
-def process_emails_tab(accounts):
-    """Email processing interface"""
+# ==================== PROCESS TAB ====================
+
+def process_emails_tab():
+    """Classification using synced data"""
+    st.header("Process Emails")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
     if not accounts:
-        st.warning("No accounts authenticated. Please add a Gmail account from the sidebar.")
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
         return
 
-    st.header("Process Emails")
+    # Filter to accounts with synced data
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
 
     # Show if custom categories available
     if st.session_state.get('approved_categories'):
-        st.info("✓ Using your custom analyzed categories!")
-
-    else:
-        st.info("💡 Tip: Use 'Analyze First' tab to discover categories based on your actual emails")
+        st.info("Using your custom analyzed categories!")
 
     # Account selection
-    account_options = {f"{name} ({email})": name for name, email in accounts}
-    selected_account = st.selectbox(
-        "Select account to process",
-        options=list(account_options.keys())
-    )
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account to process", list(account_options.keys()),
+                                  key="process_account_select")
+    account_name = account_options[selected_label]
 
-    account_name = account_options[selected_account]
-
-    # Get total email count for the selected account
-    # Cache the count to avoid repeated API calls
-    cache_key_process = f"email_count_process_{account_name}"
-
-    if cache_key_process not in st.session_state:
-        try:
-            service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
-            ops = GmailOperations(service, email)
-
-            # Get count based on scan option (will be set below)
-            if 'scan_option_process' not in st.session_state:
-                st.session_state.scan_option_process = "All Mail (Everything)"
-
-            # Determine query for count
-            scan_queries_process = {
-                "All Mail (Everything)": "",
-                "Inbox Only": "in:inbox",
-                "Unread Only": "is:unread",
-                "Sent Mail": "in:sent"
-            }
-            count_query_process = scan_queries_process.get(st.session_state.scan_option_process, "")
-            total_emails_process = ops.get_email_count(query=count_query_process)
-
-            # Cache the result
-            st.session_state[cache_key_process] = total_emails_process
-            logger.info(f"Account {account_name} has {total_emails_process} emails for processing (query: '{count_query_process}')")
-        except Exception as e:
-            logger.error(f"Could not get email count for processing: {e}", exc_info=True)
-            st.session_state[cache_key_process] = 1000  # Fallback
-            total_emails_process = 1000
-    else:
-        total_emails_process = st.session_state[cache_key_process]
+    emails = sync_mgr.get_emails(account_name)
+    st.success(f"Using {len(emails):,} synced emails (no re-fetching needed)")
 
     col1, col2 = st.columns(2)
-
     with col1:
-        # Option to choose between All or Custom
-        process_option = st.radio(
+        max_process = st.number_input(
             "Emails to process",
-            options=[f"All ({total_emails_process:,} emails)", "Custom amount"],
-            index=0,
-            key="process_amount_option",
-            help="Process all emails to fully organize your inbox"
+            min_value=10,
+            max_value=len(emails),
+            value=min(len(emails), 100),
+            step=50,
+            key="process_max"
         )
-
-        if "Custom amount" in process_option:
-            max_emails = st.number_input(
-                "Number of emails",
-                min_value=10,
-                max_value=max(total_emails_process, 10000),
-                value=min(100, total_emails_process),
-                step=50,
-                key="process_custom_amount"
-            )
-        else:
-            # Process all emails
-            max_emails = total_emails_process
-            if total_emails_process > 1000:
-                st.caption(f"ℹ️ Processing {total_emails_process:,} emails may take a while. Consider testing with fewer first.")
-
     with col2:
-        scan_option = st.selectbox(
-            "What to scan",
-            options=[
-                "All Mail (Everything)",
-                "Inbox Only",
-                "Unread Only",
-                "Sent Mail",
-                "Custom Query"
-            ],
-            index=0,  # Default to "All Mail"
-            help="Scan everything for complete organization",
-            key="scan_option_process"
-        )
+        # Show categories
+        with st.expander("Categories to apply"):
+            st.subheader("Job Search")
+            for key, info in CATEGORIES['job_search'].items():
+                st.markdown(f"- **{info['name']}**: {info['description']}")
+            st.subheader("General")
+            for key, info in CATEGORIES['general'].items():
+                st.markdown(f"- **{info['name']}**: {info['description']}")
 
-        # Map selection to query
-        query_map = {
-            "All Mail (Everything)": "",
-            "Inbox Only": "in:inbox",
-            "Unread Only": "is:unread",
-            "Sent Mail": "in:sent",
-            "Custom Query": None
-        }
-
-        query = query_map.get(scan_option, "")
-
-        if scan_option == "Custom Query":
-            query = st.text_input(
-                "Gmail search query",
-                value="in:inbox",
-                help="e.g., 'from:linkedin.com', 'after:2024/01/01'",
-                key="process_custom_query"
-            )
-
-    # Show categories that will be created
-    with st.expander("📁 Categories to be created"):
-        st.subheader("Job Search Categories")
-        for key, info in CATEGORIES['job_search'].items():
-            st.markdown(f"**{info['name']}** - {info['description']}")
-
-        st.subheader("General Categories")
-        for key, info in CATEGORIES['general'].items():
-            st.markdown(f"**{info['name']}** - {info['description']}")
-
-    # Check if using Claude Code
+    # Classification method
     use_claude_code = st.session_state.get('use_claude_code', False)
 
     if use_claude_code:
-        st.info("🤖 Using Claude Code CLI for classification (free, runs in Terminal)")
+        st.info("Using Claude Code CLI for classification (free, runs in Terminal)")
 
         col1, col2 = st.columns(2)
-
         with col1:
-            if st.button("📤 Step 1: Export & Launch Claude Code", type="primary", use_container_width=True):
-                logger.info(f"User clicked Export for Claude Code: {max_emails} emails")
-                process_with_claude_code_step1(account_name, max_emails, query)
-
+            if st.button("Step 1: Export & Launch Claude Code", type="primary", use_container_width=True):
+                process_with_claude_code_step1(account_name, emails[:max_process])
         with col2:
-            if st.button("✅ Step 2: Apply Results from Claude Code", use_container_width=True):
-                logger.info("User clicked Apply Results")
+            if st.button("Step 2: Apply Results", use_container_width=True):
                 process_with_claude_code_step2(account_name)
     else:
-        # Original API-based processing
-        st.info("💰 Using Anthropic API for classification (costs tokens)")
+        st.info("Using Anthropic API for classification")
 
-        if st.button("🚀 Start Processing", type="primary", use_container_width=True):
-            logger.info(f"User clicked Process: {max_emails} emails from query '{query}'")
-            process_account(account_name, max_emails, query)
+        if st.button("Start Processing", type="primary", use_container_width=True):
+            process_account(account_name, emails[:max_process])
 
 
-def process_with_claude_code_step1(account_name, max_emails, query):
-    """Step 1: Export emails and launch Claude Code in Terminal"""
+def process_with_claude_code_step1(account_name: str, emails: list):
+    """Export emails and launch Claude Code in Terminal"""
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     try:
-        # Authenticate
-        status_text.text("Authenticating account...")
-        progress_bar.progress(20)
-        logger.info(f"Authenticating account: {account_name}")
-
-        service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
-        ops = GmailOperations(service, email)
-
-        # Fetch emails with real-time progress
-        logger.info(f"Fetching {max_emails} emails with query: '{query}'")
-
-        if max_emails > 10000:
-            estimated_time = (max_emails / 1000) * 0.5
-            st.info(f"📥 Fetching {max_emails:,} emails (metadata only) - Estimated time: ~{estimated_time:.1f} minutes")
-
-        # Define progress callback
-        def update_progress_step1(current, total, message):
-            if total > 0:
-                percentage = int((current / total) * 100)
-                overall_progress = 40 + int((current / total) * 20)
-                progress_bar.progress(min(overall_progress, 60))
-            status_text.text(message)
-
-        emails = ops.fetch_emails(max_results=max_emails, query=query, progress_callback=update_progress_step1)
-
-        if not emails:
-            st.warning("No emails found matching the query.")
-            return
-
-        logger.info(f"Found {len(emails)} emails")
-
-        # Export to JSON
         status_text.text(f"Exporting {len(emails)} emails for Claude Code...")
-        progress_bar.progress(60)
+        progress_bar.progress(30)
 
         emails_file = claude_code.export_emails_for_claude(emails)
 
-        # Create prompt
         status_text.text("Creating classification prompt...")
-        progress_bar.progress(80)
+        progress_bar.progress(60)
 
         prompt_file = claude_code.create_classification_prompt(
-            CATEGORIES,
-            job_search_focused=True
+            CATEGORIES, job_search_focused=True
         )
 
-        # Store emails in session for later use
         st.session_state.pending_emails = emails
         st.session_state.pending_account = account_name
 
         progress_bar.progress(100)
-        status_text.text("✓ Ready to launch Claude Code!")
+        status_text.text("Ready!")
 
-        st.success(f"✓ Exported {len(emails)} emails!")
+        st.success(f"Exported {len(emails)} emails!")
 
-        # Launch Terminal with Claude Code
         try:
             claude_code.launch_claude_code_terminal(prompt_file)
             st.info("""
-🚀 **Terminal opened with Claude Code!**
+**Terminal opened with Claude Code!**
 
-**What to do:**
-1. Wait for Claude Code to process all emails (1-2 minutes)
-2. When it says "Classification complete", come back here
-3. Click "Step 2: Apply Results" button below
+1. Wait for Claude Code to process all emails
+2. When done, click "Step 2: Apply Results"
 
-**Files created:**
-- `.claude-processing/emails.json` (your emails)
-- `.claude-processing/prompt.md` (instructions for Claude)
-- `.claude-processing/results.json` (will be created by Claude)
+Files created:
+- `.claude-processing/emails.json`
+- `.claude-processing/prompt.md`
+- `.claude-processing/results.json` (created by Claude)
             """)
-
         except Exception as e:
             st.error(f"Failed to launch Terminal: {e}")
-            logger.error(f"Failed to launch Terminal: {e}", exc_info=True)
 
     except Exception as e:
         logger.error(f"Error in Claude Code Step 1: {e}", exc_info=True)
         st.error(f"Error: {e}")
 
 
-def process_with_claude_code_step2(account_name):
-    """Step 2: Read Claude Code results and apply labels"""
+def process_with_claude_code_step2(account_name: str):
+    """Read Claude Code results and apply labels"""
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     try:
-        # Check if we have pending emails
         if 'pending_emails' not in st.session_state:
             st.error("No emails found. Please run Step 1 first.")
             return
 
         emails = st.session_state.pending_emails
 
-        # Read classification results
-        status_text.text("Reading classification results from Claude Code...")
+        status_text.text("Reading classification results...")
         progress_bar.progress(20)
 
         results = claude_code.read_classification_results()
-
         if not results:
-            st.error("No results found. Make sure Claude Code finished processing and created results.json")
+            st.error("No results found. Make sure Claude Code finished and created results.json")
             return
 
-        logger.info(f"Found {len(results)} classification results")
-
-        # Create a mapping of email_id -> category
         classifications = {r['id']: r['category'] for r in results}
 
-        # Authenticate
         status_text.text("Authenticating...")
         progress_bar.progress(30)
 
         service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
         ops = GmailOperations(service, email)
 
-        # Create labels
-        status_text.text("Creating Gmail labels...")
+        status_text.text("Creating labels...")
         progress_bar.progress(40)
-
         label_map = ops.create_all_labels()
-        logger.info(f"Created/verified {len(label_map)} labels")
 
-        # Apply labels
-        status_text.text("Applying labels to emails...")
+        status_text.text("Applying labels...")
         progress_bar.progress(50)
 
         applied_count = 0
         category_counts = {}
 
-        for i, email in enumerate(emails):
-            email_id = email['email_id']
-            category = classifications.get(email_id, 'saved')  # Default to 'saved' if not classified
-
+        for i, email_item in enumerate(emails):
+            email_id = email_item['email_id']
+            category = classifications.get(email_id, 'saved')
             label_id = label_map.get(category)
 
             if label_id:
@@ -719,32 +545,25 @@ def process_with_claude_code_step2(account_name):
             if (i + 1) % 50 == 0:
                 progress = 50 + int((i + 1) / len(emails) * 50)
                 progress_bar.progress(min(progress, 99))
-                status_text.text(f"Applied {applied_count} labels so far...")
+                status_text.text(f"Applied {applied_count} labels...")
 
         progress_bar.progress(100)
-        status_text.text("✓ Processing complete!")
+        status_text.text("Complete!")
 
-        logger.info(f"Applied {applied_count} labels to {len(emails)} emails")
+        st.session_state.processing_results[account_name] = {
+            'email': email,
+            'total_processed': len(emails),
+            'total_labeled': applied_count,
+            'category_counts': category_counts,
+            'classified_emails': [
+                {**e, 'category': classifications.get(e['email_id'], 'saved'), 'confidence': 1.0}
+                for e in emails
+            ]
+        }
 
-        # Show success
-        st.success(f"✓ Processed {len(emails)} emails and applied {applied_count} labels!")
+        st.success(f"Processed {len(emails)} emails, applied {applied_count} labels!")
+        show_processing_summary(category_counts, len(emails))
 
-        # Show summary
-        st.subheader("Summary")
-
-        summary_data = []
-        for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
-            cat_info = st.session_state.classifier.get_category_info(category)
-            percentage = (count / len(emails)) * 100
-            summary_data.append({
-                'Category': cat_info['name'],
-                'Count': count,
-                'Percentage': f"{percentage:.1f}%"
-            })
-
-        st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
-
-        # Cleanup
         claude_code.cleanup_processing_files()
         del st.session_state.pending_emails
         del st.session_state.pending_account
@@ -754,96 +573,48 @@ def process_with_claude_code_step2(account_name):
         st.error(f"Error: {e}")
 
 
-def process_account(account_name, max_emails, query):
-    """Process a single account"""
-    logger.info(f"Starting email processing for {account_name} - max {max_emails} emails, query: '{query}'")
-
+def process_account(account_name: str, emails: list):
+    """Process emails using Anthropic API classification"""
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     try:
-        # Authenticate
-        status_text.text("Authenticating account...")
+        status_text.text("Authenticating...")
         progress_bar.progress(10)
-        logger.info(f"Authenticating account: {account_name}")
 
         service, account_email, _ = st.session_state.auth_manager.authenticate_account(account_name)
         ops = GmailOperations(service, account_email)
 
-        # Create labels
-        status_text.text("Creating Gmail labels...")
+        status_text.text("Creating labels...")
         progress_bar.progress(20)
-        logger.info("Creating Gmail labels...")
-
         label_map = ops.create_all_labels()
-        logger.info(f"Created/verified {len(label_map)} labels")
 
-        # Fetch emails with real-time progress
-        logger.info(f"Fetching up to {max_emails} emails with query: '{query}'")
-
-        # Define progress callback
-        def update_progress_fetch(current, total, message):
-            if total > 0:
-                percentage = int((current / total) * 100)
-                overall_progress = 30 + int((current / total) * 20)
-                progress_bar.progress(min(overall_progress, 50))
-            status_text.text(message)
-
-        # Use incremental sync if enabled and fetching all emails
-        use_incremental = st.session_state.get('use_incremental_sync', True)
-
-        if use_incremental and max_emails > 50000:  # Large fetch = use sync
-            logger.info("Using incremental sync (sync_emails)")
-            st.info("🔄 Using smart sync (incremental if available)...")
-            emails = ops.sync_emails(query=query, progress_callback=update_progress_fetch)
-        else:
-            if max_emails > 10000:
-                estimated_time = (max_emails / 1000) * 0.5
-                st.info(f"📥 Fetching {max_emails:,} emails - Estimated time: ~{estimated_time:.1f} minutes")
-            emails = ops.fetch_emails(max_results=max_emails, query=query, progress_callback=update_progress_fetch)
-
-        if not emails:
-            logger.warning(f"No emails found for account {account_name} with query '{query}'")
-            st.warning("No emails found matching the query.")
-            return
-
-        logger.info(f"Found {len(emails)} emails")
-        st.info(f"Found {len(emails)} emails")
-
-        # Classify emails
+        # Classify
         status_text.text("Classifying emails with AI...")
-        progress_bar.progress(50)
-        logger.info("Starting AI email classification...")
+        progress_bar.progress(30)
 
-        classified_emails = []
-        # Check if user wants to include email body (costs more tokens)
         use_body = st.session_state.get('use_email_body', False)
+        classified_emails = []
 
         for i, email_item in enumerate(emails):
-            # Token optimization: By default, only use sender + subject (~70% token savings)
             body_preview = email_item.get('body_preview', '') if use_body else ""
-
             category, confidence = st.session_state.classifier.classify_email(
                 email_item['subject'],
                 email_item['sender'],
                 body_preview=body_preview
             )
-
             email_item['category'] = category
             email_item['confidence'] = confidence
             classified_emails.append(email_item)
 
             if (i + 1) % 10 == 0:
-                progress = 50 + int((i + 1) / len(emails) * 30)
-                progress_bar.progress(progress)
-                logger.info(f"Classified {i + 1}/{len(emails)} emails")
-
-        logger.info(f"Classification complete: {len(classified_emails)} emails classified")
+                progress = 30 + int((i + 1) / len(emails) * 40)
+                progress_bar.progress(min(progress, 70))
+                status_text.text(f"Classified {i + 1}/{len(emails)}...")
 
         # Apply labels
-        status_text.text("Applying labels to emails...")
-        progress_bar.progress(80)
-        logger.info("Applying labels to emails...")
+        status_text.text("Applying labels...")
+        progress_bar.progress(70)
 
         applied_count = 0
         category_counts = {}
@@ -859,18 +630,12 @@ def process_account(account_name, max_emails, query):
                     category_counts[category] = category_counts.get(category, 0) + 1
 
             if (i + 1) % 10 == 0:
-                progress = 80 + int((i + 1) / len(emails) * 20)
+                progress = 70 + int((i + 1) / len(emails) * 30)
                 progress_bar.progress(min(progress, 99))
 
         progress_bar.progress(100)
-        status_text.text("✓ Processing complete!")
-        logger.info(f"Processing complete: {len(emails)} emails processed, {applied_count} labels applied")
+        status_text.text("Complete!")
 
-        # Log category breakdown
-        for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
-            logger.info(f"  {category}: {count} emails")
-
-        # Store results
         st.session_state.processing_results[account_name] = {
             'email': account_email,
             'total_processed': len(emails),
@@ -879,218 +644,227 @@ def process_account(account_name, max_emails, query):
             'classified_emails': classified_emails
         }
 
-        # Show success message
-        st.success(f"✓ Processed {len(emails)} emails and applied {applied_count} labels!")
-        logger.info(f"Results stored for account: {account_name}")
-
-        # Show summary
-        st.subheader("Summary")
-
-        summary_data = []
-        for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
-            cat_info = st.session_state.classifier.get_category_info(category)
-            percentage = (count / len(emails)) * 100
-            summary_data.append({
-                'Category': cat_info['name'],
-                'Count': count,
-                'Percentage': f"{percentage:.1f}%"
-            })
-
-        st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
+        st.success(f"Processed {len(emails)} emails, applied {applied_count} labels!")
+        show_processing_summary(category_counts, len(emails))
 
     except Exception as e:
-        logger.error(f"Error processing account {account_name}: {e}", exc_info=True)
-        st.error(f"Error processing account: {e}")
+        logger.error(f"Error processing {account_name}: {e}", exc_info=True)
+        st.error(f"Error: {e}")
         import traceback
         st.code(traceback.format_exc())
 
 
+def show_processing_summary(category_counts: dict, total: int):
+    """Show category distribution summary"""
+    summary_data = []
+    for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
+        cat_info = st.session_state.classifier.get_category_info(category)
+        pct = (count / total) * 100
+        summary_data.append({
+            'Category': cat_info['name'],
+            'Count': count,
+            'Percentage': f"{pct:.1f}%"
+        })
+    if summary_data:
+        st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
+
+
+# ==================== RESULTS TAB ====================
+
 def results_tab():
-    """Show processing results"""
+    """Multi-account results with search/filter"""
+    st.header("Processing Results")
+
     if not st.session_state.processing_results:
         st.info("No results yet. Process some emails first!")
         return
 
-    st.header("Processing Results")
+    accounts = list(st.session_state.processing_results.keys())
 
     # Account selector
-    accounts = list(st.session_state.processing_results.keys())
-    selected_account = st.selectbox("View results for", accounts)
-
+    selected_account = st.selectbox("View results for", accounts, key="results_account")
     result = st.session_state.processing_results[selected_account]
 
     # Metrics
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.metric("Total Processed", result['total_processed'])
-
     with col2:
         st.metric("Labels Applied", result['total_labeled'])
-
     with col3:
-        if result['total_processed'] > 0:
-            success_rate = (result['total_labeled'] / result['total_processed']) * 100
-        else:
-            success_rate = 0.0
-        st.metric("Success Rate", f"{success_rate:.1f}%")
+        rate = (result['total_labeled'] / max(result['total_processed'], 1)) * 100
+        st.metric("Success Rate", f"{rate:.1f}%")
 
-    # Category breakdown
+    # Category breakdown chart
     st.subheader("Category Distribution")
-
     chart_data = []
     for category, count in result['category_counts'].items():
         cat_info = st.session_state.classifier.get_category_info(category)
-        chart_data.append({
-            'Category': cat_info['name'],
-            'Count': count
-        })
+        chart_data.append({'Category': cat_info['name'], 'Count': count})
 
-    df = pd.DataFrame(chart_data)
-    st.bar_chart(df.set_index('Category'))
+    if chart_data:
+        df = pd.DataFrame(chart_data)
+        st.bar_chart(df.set_index('Category'))
 
-    # Email details
+    # Email details with search
     st.subheader("Email Details")
 
-    emails_df = pd.DataFrame([
-        {
-            'Subject': e['subject'][:60],
-            'From': e['sender'][:40],
-            'Category': st.session_state.classifier.get_category_info(e['category'])['name'],
-            'Confidence': f"{e['confidence']:.0%}"
-        }
-        for e in result['classified_emails']
-    ])
+    search_query = st.text_input("Search emails", placeholder="Filter by subject or sender...",
+                                 key="results_search")
 
-    st.dataframe(emails_df, use_container_width=True)
+    classified = result.get('classified_emails', [])
+    if search_query:
+        search_lower = search_query.lower()
+        classified = [e for e in classified
+                      if search_lower in e.get('subject', '').lower()
+                      or search_lower in e.get('sender', '').lower()]
 
+    if classified:
+        emails_df = pd.DataFrame([
+            {
+                'Subject': e['subject'][:60],
+                'From': e['sender'][:40],
+                'Category': st.session_state.classifier.get_category_info(e.get('category', 'saved'))['name'],
+                'Confidence': f"{e.get('confidence', 0):.0%}"
+            }
+            for e in classified[:500]  # Limit display
+        ])
+        st.dataframe(emails_df, use_container_width=True)
+        if len(classified) > 500:
+            st.caption(f"Showing 500 of {len(classified)} results")
+    else:
+        st.info("No emails match the search.")
+
+
+# ==================== SETTINGS TAB ====================
 
 def settings_tab():
-    """Settings and configuration"""
+    """Classification method, sync config, data management"""
     st.header("Settings")
 
-    st.subheader("🤖 AI Classification Method")
+    st.subheader("AI Classification Method")
 
-    # Check if Claude Code is installed (cache result)
     if 'claude_code_installed' not in st.session_state:
         st.session_state.claude_code_installed = claude_code.check_claude_code_installed()
 
-    claude_code_installed = st.session_state.claude_code_installed
-
-    if claude_code_installed:
-        st.success("✅ Claude Code CLI detected!")
-
+    if st.session_state.claude_code_installed:
+        st.success("Claude Code CLI detected!")
         use_claude_code = st.checkbox(
             "Use Claude Code for classification (Recommended)",
             value=True,
-            help="Free, faster, and uses your full Claude context. Runs locally via Terminal."
+            help="Free, faster, uses full Claude context. Runs locally via Terminal."
         )
-
         st.session_state.use_claude_code = use_claude_code
 
         if use_claude_code:
             st.info("""
 **How it works:**
 1. App exports emails to `.claude-processing/emails.json`
-2. Click button → Opens Terminal → Runs Claude Code
-3. Claude processes all emails and saves results
+2. Opens Terminal and runs Claude Code
+3. Claude processes and saves results
 4. App reads results and applies Gmail labels
 
 **Benefits:** Free, no API costs, full context window!
             """)
-        else:
-            st.warning("Will use Anthropic API directly (costs money)")
     else:
-        st.warning("⚠️ Claude Code CLI not found")
+        st.warning("Claude Code CLI not found")
         st.info("Install with: `npm install -g @anthropic-ai/claude-code`")
         st.session_state.use_claude_code = False
 
     st.markdown("---")
 
-    st.subheader("🔧 API Classification Settings")
+    st.subheader("API Classification Settings")
 
-    # Token optimization toggle (only relevant if using API)
     use_email_body = st.checkbox(
         "Include email body in API classification",
         value=False,
-        help="⚠️ Uses ~70% more tokens. Sender + Subject is usually enough for accurate classification."
+        help="Uses ~70% more tokens. Sender + Subject is usually enough."
     )
-
-    if use_email_body:
-        st.warning("Including email body will use significantly more tokens and cost more.")
-    else:
-        st.success("✅ Token optimization ON: Using only sender + subject (~70% token savings)")
-
-    # Store in session state
     st.session_state.use_email_body = use_email_body
 
-    st.markdown("---")
-
-    st.subheader("🔄 Incremental Sync (Gmail History API)")
-
-    use_incremental_sync = st.checkbox(
-        "Enable incremental sync for future runs (Recommended)",
-        value=True,
-        help="After initial sync, only fetch NEW emails instead of re-scanning everything. Much faster!"
-    )
-
-    st.session_state.use_incremental_sync = use_incremental_sync
-
-    if use_incremental_sync:
-        st.success("""✅ **Incremental sync enabled**
-- First run: Full sync (fetches all emails, saves state)
-- Future runs: Only fetches new/changed emails (seconds instead of hours!)
-        """)
-
-        # Show sync state info if available
-        from gmail_organizer.auth import GmailAuthManager
-        from gmail_organizer.operations import GmailOperations
-        auth_manager = st.session_state.auth_manager
-        accounts = auth_manager.list_authenticated_accounts()
-
-        if accounts:
-            with st.expander("📊 Sync State Info"):
-                for name, email in accounts:
-                    try:
-                        service, _, _ = auth_manager.authenticate_account(name)
-                        ops = GmailOperations(service, email)
-                        sync_state = ops._load_sync_state()
-
-                        if sync_state.get("history_id"):
-                            st.markdown(f"**{email}**")
-                            st.text(f"  Last sync: {sync_state.get('last_sync_time', 'Unknown')}")
-                            st.text(f"  Cached emails: {sync_state.get('total_synced', 0):,}")
-                            st.text(f"  History ID: {sync_state.get('history_id', 'N/A')}")
-                        else:
-                            st.markdown(f"**{email}**: No sync state yet (will do full sync first)")
-                    except Exception as e:
-                        st.warning(f"Could not load sync state for {email}: {e}")
+    if use_email_body:
+        st.warning("Including email body will use significantly more tokens.")
     else:
-        st.warning("Full sync will be performed every time (slower for large mailboxes)")
+        st.success("Token optimization ON: Using only sender + subject (~70% savings)")
 
     st.markdown("---")
+
+    st.subheader("Sync Configuration")
+
+    st.success("""**Incremental sync enabled**
+- First run: Full sync (fetches all, saves state)
+- Future runs: Only new/changed emails (fast!)
+    """)
+
+    # Show sync state info
+    sync_mgr = st.session_state.sync_manager
+    statuses = sync_mgr.get_all_statuses()
+
+    if statuses:
+        with st.expander("Sync State Info"):
+            for name, status in statuses.items():
+                st.markdown(f"**{name}**")
+                st.text(f"  State: {status.state}")
+                st.text(f"  Emails: {len(status.emails_data):,}")
+                if status.last_sync_time:
+                    st.text(f"  Last sync: {status.last_sync_time[:19]}")
+
+    st.markdown("---")
+
+    st.subheader("Data Management")
+
+    st.info("""**Data is never deleted from disk.**
+- `.sync-state/` files contain your full email database per account
+- `.email-cache/` checkpoint dirs allow resuming interrupted fetches
+- Data persists across restarts and is reused automatically
+    """)
 
     st.subheader("API Configuration")
-
     api_key_set = st.session_state.classifier.api_key is not None
-    st.text(f"Anthropic API Key: {'✓ Set' if api_key_set else '✗ Not set'}")
-
+    st.text(f"Anthropic API Key: {'Set' if api_key_set else 'Not set'}")
     if not api_key_set:
-        st.warning("Anthropic API key not found. Please set ANTHROPIC_API_KEY in .env file")
+        st.warning("Set ANTHROPIC_API_KEY in .env file for API-based classification")
 
-    st.subheader("About")
-    st.markdown("""
-    **Gmail Organizer** uses AI to automatically categorize your emails across multiple Gmail accounts.
 
-    Features:
-    - Multi-account support
-    - AI-powered classification
-    - Automatic label creation
-    - Job search focused categories
-    - Batch processing
+# ==================== MAIN ====================
 
-    **Privacy:** All processing happens locally. Email content is sent to Anthropic Claude for classification only.
-    """)
+def main():
+    if 'session_logged' not in st.session_state:
+        logger.info("=" * 60)
+        logger.info("Gmail Organizer session started")
+        logger.info("=" * 60)
+        st.session_state.session_logged = True
+
+    st.title("Gmail Organizer")
+    st.markdown("AI-powered email management for multiple Gmail accounts")
+
+    # Register accounts with sync manager
+    register_all_accounts()
+
+    # Render sidebar
+    render_sidebar()
+
+    # Main tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Dashboard", "Analyze", "Process", "Results", "Settings"
+    ])
+
+    with tab1:
+        dashboard_tab()
+    with tab2:
+        analyze_tab()
+    with tab3:
+        process_emails_tab()
+    with tab4:
+        results_tab()
+    with tab5:
+        settings_tab()
+
+    # Auto-refresh while syncing
+    sync_mgr = st.session_state.sync_manager
+    if sync_mgr.is_any_syncing():
+        time.sleep(2)
+        st.rerun()
 
 
 if __name__ == "__main__":
@@ -1099,5 +873,5 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Critical error in main: {e}", exc_info=True)
         st.error(f"Critical error: {e}")
-        st.error("Please check the logs for details.")
-        st.code(f"Logs: ~/Desktop/Projects/PersonalProjects/gmail-organizer/logs/")
+        import traceback
+        st.code(traceback.format_exc())
