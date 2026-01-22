@@ -1043,8 +1043,8 @@ def settings_tab():
         """)
 
         # Show sync state info if available
-        from gmail_auth import GmailAuthManager
-        from gmail_operations import GmailOperations
+        from gmail_organizer.auth import GmailAuthManager
+        from gmail_organizer.operations import GmailOperations
         auth_manager = st.session_state.auth_manager
         accounts = auth_manager.list_authenticated_accounts()
 

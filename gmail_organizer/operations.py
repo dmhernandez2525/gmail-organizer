@@ -37,7 +37,7 @@ class GmailOperations:
                 with open(checkpoint_path, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                from logger import logger
+                from gmail_organizer.logger import logger
                 logger.warning(f"Could not load checkpoint: {e}")
         return {"emails": [], "fetched_ids": set()}
 
@@ -50,7 +50,7 @@ class GmailOperations:
                     "fetched_ids": list(fetched_ids)
                 }, f)
         except Exception as e:
-            from logger import logger
+            from gmail_organizer.logger import logger
             logger.warning(f"Could not save checkpoint: {e}")
 
     # ==================== SYNC STATE MANAGEMENT ====================
@@ -69,7 +69,7 @@ class GmailOperations:
                 with open(sync_path, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                from logger import logger
+                from gmail_organizer.logger import logger
                 logger.warning(f"Could not load sync state: {e}")
         return {
             "history_id": None,
@@ -81,7 +81,7 @@ class GmailOperations:
     def _save_sync_state(self, history_id: str, emails: Dict, last_sync_time: str = None):
         """Save sync state after successful sync"""
         from datetime import datetime
-        from logger import logger
+        from gmail_organizer.logger import logger
 
         sync_path = self._get_sync_state_path()
         try:
@@ -103,7 +103,7 @@ class GmailOperations:
             profile = self.service.users().getProfile(userId='me').execute()
             return profile.get('historyId')
         except HttpError as e:
-            from logger import logger
+            from gmail_organizer.logger import logger
             logger.error(f"Could not get current historyId: {e}")
             return None
 
@@ -123,7 +123,7 @@ class GmailOperations:
         Returns:
             List of all email dictionaries (cached + new)
         """
-        from logger import logger
+        from gmail_organizer.logger import logger
         from datetime import datetime
 
         sync_state = self._load_sync_state()
@@ -216,7 +216,7 @@ class GmailOperations:
         Returns:
             Tuple of (new_emails, deleted_ids, current_history_id) or (None, None, None) on failure
         """
-        from logger import logger
+        from gmail_organizer.logger import logger
 
         logger.info(f"Starting incremental sync from historyId={start_history_id}")
 
@@ -328,7 +328,7 @@ class GmailOperations:
         Returns:
             List of email dictionaries
         """
-        from logger import logger
+        from gmail_organizer.logger import logger
 
         emails = []
         message_ids = []
@@ -497,7 +497,7 @@ class GmailOperations:
         Returns:
             Tuple of (successful_emails, failed_ids) - returns partial results!
         """
-        from logger import logger
+        from gmail_organizer.logger import logger
 
         emails = []
         failed_ids = []
@@ -760,7 +760,7 @@ class GmailOperations:
         For empty query (all mail), uses Gmail profile API for accurate total.
         For specific queries, uses resultSizeEstimate (approximate).
         """
-        from logger import logger
+        from gmail_organizer.logger import logger
 
         try:
             # For all mail (empty query), use profile API for accurate count
@@ -799,7 +799,7 @@ class GmailOperations:
 
 
 if __name__ == "__main__":
-    from gmail_auth import GmailAuthManager
+    from gmail_organizer.auth import GmailAuthManager
 
     # Test Gmail operations
     auth_manager = GmailAuthManager()
