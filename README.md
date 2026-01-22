@@ -4,6 +4,10 @@ AI-powered email management system that automatically categorizes and organizes 
 
 ![Python](https://img.shields.io/badge/Python-3.11-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![Gmail API](https://img.shields.io/badge/Gmail-API-red)
+![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B)
+
+**[View Website](https://gmail-organizer-site.onrender.com)** | **[Deploy Your Own](#-deploy)**
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dmhernandez2525/gmail-organizer)
 
@@ -112,7 +116,7 @@ Benefits:
 
 1. **Clone the repository**
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/dmhernandez2525/gmail-organizer.git
 cd gmail-organizer
 ```
 
@@ -335,6 +339,35 @@ The app handles rate limits automatically with exponential backoff and checkpoin
 - Enable "Include email body" in Settings (costs more tokens)
 - Review and edit categories in `config.py`
 - Use "Analyze First" to discover better categories
+
+## 🚀 Deploy
+
+### Deploy Documentation Website
+
+Click the Render button at the top to deploy the documentation website, or manually:
+
+```bash
+# The website is located in /website
+cd website
+npm install
+npm run build
+# Deploy the dist/ folder to any static host
+```
+
+### Self-Hosted Processing
+
+The email processing runs locally on your machine for privacy. Clone the repo and follow the [Getting Started](#-getting-started) section above.
+
+## 🗺️ Roadmap
+
+- [x] **Core Classification** - AI-powered email categorization
+- [x] **Incremental Sync** - Gmail History API integration
+- [x] **Checkpoint System** - Resumable batch processing
+- [x] **Multi-Account Support** - Manage 5+ Gmail accounts
+- [ ] **Smart Filters** - Automatic filter rule generation
+- [ ] **Analytics Dashboard** - Email insights and trends
+- [ ] **Mobile Companion** - iOS/Android notification app
+- [ ] **Calendar Integration** - Auto-schedule from email context
 
 ## 🤝 Contributing
 
