@@ -2,9 +2,10 @@
 
 AI-powered email management system that automatically categorizes and organizes emails across multiple Gmail accounts using Claude AI.
 
-![Gmail Organizer](https://img.shields.io/badge/AI-Claude-blue)
 ![Python](https://img.shields.io/badge/Python-3.11-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dmhernandez2525/gmail-organizer)
 
 ## 🎯 What It Does
 
