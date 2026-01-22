@@ -345,10 +345,8 @@ MIT License - See LICENSE file for details
 
 ## 🙏 Acknowledgments
 
-- Built with [Anthropic Claude](https://www.anthropic.com/claude)
 - Gmail API by Google
 - [Streamlit](https://streamlit.io/) for the UI
-- Claude Code CLI for local processing
 
 ## 📧 Contact
 

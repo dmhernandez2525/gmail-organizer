@@ -1,0 +1,45 @@
+# Gmail Organizer - Render Infrastructure Configuration
+# =====================================================
+# Static site deployment for the Gmail Organizer portfolio/documentation website.
+# Built with React, Tailwind CSS v4, and shadcn/ui.
+#
+# Cost: $0/month (static site on free tier)
+#
+# The main application (Streamlit) runs locally on macOS.
+# This website serves as documentation and portfolio showcase.
+
+services:
+  # =============================================
+  # Static Site - React/Vite Frontend
+  # =============================================
+  - type: web
+    name: gmail-organizer-site
+    runtime: static
+    rootDir: website
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+    routes:
+      # SPA fallback routing
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
