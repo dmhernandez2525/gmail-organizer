@@ -20,6 +20,8 @@ class GmailOperations:
         self.labels_cache = None
         self.checkpoint_dir = Path(__file__).parent / ".email-cache"
         self.checkpoint_dir.mkdir(exist_ok=True)
+        self.sync_state_dir = Path(__file__).parent / ".sync-state"
+        self.sync_state_dir.mkdir(exist_ok=True)
 
     def _get_checkpoint_path(self, query: str) -> Path:
         """Get checkpoint file path for a specific query"""
@@ -50,6 +52,269 @@ class GmailOperations:
         except Exception as e:
             from logger import logger
             logger.warning(f"Could not save checkpoint: {e}")
+
+    # ==================== SYNC STATE MANAGEMENT ====================
+    # These methods manage the historyId for incremental sync using Gmail's History API
+
+    def _get_sync_state_path(self) -> Path:
+        """Get sync state file path for this account"""
+        safe_email = self.account_email.replace('@', '_at_').replace('.', '_')
+        return self.sync_state_dir / f"sync_state_{safe_email}.json"
+
+    def _load_sync_state(self) -> Dict:
+        """Load sync state (historyId, last sync time, email database)"""
+        sync_path = self._get_sync_state_path()
+        if sync_path.exists():
+            try:
+                with open(sync_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                from logger import logger
+                logger.warning(f"Could not load sync state: {e}")
+        return {
+            "history_id": None,
+            "last_sync_time": None,
+            "emails": {},  # email_id -> email data
+            "total_synced": 0
+        }
+
+    def _save_sync_state(self, history_id: str, emails: Dict, last_sync_time: str = None):
+        """Save sync state after successful sync"""
+        from datetime import datetime
+        from logger import logger
+
+        sync_path = self._get_sync_state_path()
+        try:
+            state = {
+                "history_id": history_id,
+                "last_sync_time": last_sync_time or datetime.now().isoformat(),
+                "emails": emails,
+                "total_synced": len(emails)
+            }
+            with open(sync_path, 'w') as f:
+                json.dump(state, f)
+            logger.info(f"Saved sync state: historyId={history_id}, {len(emails)} emails")
+        except Exception as e:
+            logger.error(f"Could not save sync state: {e}")
+
+    def get_current_history_id(self) -> Optional[str]:
+        """Get the current historyId from Gmail profile"""
+        try:
+            profile = self.service.users().getProfile(userId='me').execute()
+            return profile.get('historyId')
+        except HttpError as e:
+            from logger import logger
+            logger.error(f"Could not get current historyId: {e}")
+            return None
+
+    def sync_emails(self, query: str = "", progress_callback=None) -> List[Dict]:
+        """
+        Smart sync: Uses incremental sync if available, otherwise full sync.
+
+        This is the recommended method for fetching emails as it:
+        1. Checks if we have a previous sync state (historyId)
+        2. If yes, uses history.list to only fetch new/changed emails (FAST!)
+        3. If no, performs a full sync and saves the historyId for next time
+
+        Args:
+            query: Gmail search query (used for full sync filtering)
+            progress_callback: Optional callback function(current, total, message)
+
+        Returns:
+            List of all email dictionaries (cached + new)
+        """
+        from logger import logger
+        from datetime import datetime
+
+        sync_state = self._load_sync_state()
+        stored_history_id = sync_state.get("history_id")
+        cached_emails = sync_state.get("emails", {})
+
+        if stored_history_id and cached_emails:
+            logger.info(f"Found sync state: historyId={stored_history_id}, {len(cached_emails)} cached emails")
+            print(f"📂 Found previous sync: {len(cached_emails):,} emails cached")
+
+            # Try incremental sync
+            try:
+                new_emails, deleted_ids, current_history_id = self._incremental_sync(
+                    stored_history_id,
+                    progress_callback
+                )
+
+                if new_emails is not None:  # Incremental sync succeeded
+                    # Update cache: add new emails, remove deleted
+                    for email in new_emails:
+                        cached_emails[email['email_id']] = email
+                    for email_id in deleted_ids:
+                        cached_emails.pop(email_id, None)
+
+                    # Save updated state
+                    self._save_sync_state(current_history_id, cached_emails)
+
+                    logger.info(f"Incremental sync complete: +{len(new_emails)} new, -{len(deleted_ids)} deleted")
+                    print(f"✓ Incremental sync: +{len(new_emails):,} new, -{len(deleted_ids):,} deleted")
+                    print(f"✓ Total emails: {len(cached_emails):,}")
+
+                    return list(cached_emails.values())
+
+            except HttpError as e:
+                if 'historyId' in str(e) or '404' in str(e):
+                    logger.warning(f"History expired, falling back to full sync: {e}")
+                    print("⚠️  History expired, performing full sync...")
+                else:
+                    raise
+
+        # Full sync needed (first time or history expired)
+        logger.info("Performing full sync...")
+        print("🔄 Performing full sync (this will be cached for future incremental syncs)...")
+
+        # Get current historyId BEFORE fetching (to capture any changes during fetch)
+        current_history_id = self.get_current_history_id()
+
+        # Perform full sync
+        emails = self.fetch_emails(
+            max_results=1000000,  # Effectively unlimited
+            query=query,
+            progress_callback=progress_callback
+        )
+
+        if emails:
+            # Convert to dict for efficient lookups
+            emails_dict = {e['email_id']: e for e in emails}
+
+            # Get the historyId from the most recent message for accuracy
+            if emails:
+                try:
+                    # Get historyId from the first (most recent) message
+                    msg = self.service.users().messages().get(
+                        userId='me',
+                        id=emails[0]['email_id'],
+                        format='minimal'
+                    ).execute()
+                    current_history_id = msg.get('historyId', current_history_id)
+                except:
+                    pass  # Use profile historyId as fallback
+
+            # Save sync state for future incremental syncs
+            self._save_sync_state(current_history_id, emails_dict)
+            logger.info(f"Full sync complete: {len(emails)} emails, historyId={current_history_id}")
+            print(f"✓ Full sync complete: {len(emails):,} emails")
+            print(f"✓ Saved sync state for future incremental syncs")
+
+        return emails
+
+    def _incremental_sync(self, start_history_id: str, progress_callback=None) -> tuple:
+        """
+        Fetch only new/changed emails since the given historyId.
+
+        Uses Gmail's history.list API which is MUCH faster than full sync.
+
+        Args:
+            start_history_id: The historyId from last sync
+            progress_callback: Optional progress callback
+
+        Returns:
+            Tuple of (new_emails, deleted_ids, current_history_id) or (None, None, None) on failure
+        """
+        from logger import logger
+
+        logger.info(f"Starting incremental sync from historyId={start_history_id}")
+
+        if progress_callback:
+            progress_callback(0, 100, "Checking for new emails...")
+
+        new_message_ids = set()
+        deleted_ids = set()
+        label_changes = {}  # message_id -> new labels
+
+        page_token = None
+        history_count = 0
+
+        try:
+            while True:
+                # Fetch history records
+                results = self.service.users().history().list(
+                    userId='me',
+                    startHistoryId=start_history_id,
+                    historyTypes=['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'],
+                    pageToken=page_token
+                ).execute()
+
+                history_records = results.get('history', [])
+                current_history_id = results.get('historyId', start_history_id)
+
+                for record in history_records:
+                    history_count += 1
+
+                    # New messages
+                    for msg in record.get('messagesAdded', []):
+                        new_message_ids.add(msg['message']['id'])
+
+                    # Deleted messages
+                    for msg in record.get('messagesDeleted', []):
+                        msg_id = msg['message']['id']
+                        deleted_ids.add(msg_id)
+                        new_message_ids.discard(msg_id)  # Don't fetch if deleted
+
+                    # Label changes (for existing messages)
+                    for msg in record.get('labelsAdded', []):
+                        msg_id = msg['message']['id']
+                        if msg_id not in new_message_ids:
+                            label_changes[msg_id] = msg['message'].get('labelIds', [])
+
+                    for msg in record.get('labelsRemoved', []):
+                        msg_id = msg['message']['id']
+                        if msg_id not in new_message_ids:
+                            label_changes[msg_id] = msg['message'].get('labelIds', [])
+
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
+
+            logger.info(f"History scan complete: {history_count} records, {len(new_message_ids)} new, {len(deleted_ids)} deleted")
+
+            if not new_message_ids and not deleted_ids:
+                logger.info("No changes since last sync")
+                print("✓ No new emails since last sync")
+                return [], [], current_history_id
+
+            # Fetch details for new messages
+            new_emails = []
+            if new_message_ids:
+                if progress_callback:
+                    progress_callback(0, len(new_message_ids), f"Fetching {len(new_message_ids)} new emails...")
+
+                logger.info(f"Fetching {len(new_message_ids)} new email details...")
+                print(f"📥 Fetching {len(new_message_ids):,} new emails...")
+
+                # Use batch fetching for efficiency
+                message_ids_list = list(new_message_ids)
+                batch_size = 50
+
+                for batch_start in range(0, len(message_ids_list), batch_size):
+                    batch_ids = message_ids_list[batch_start:batch_start + batch_size]
+                    batch_emails, failed_ids = self._fetch_emails_batch(batch_ids)
+                    new_emails.extend(batch_emails)
+
+                    if progress_callback:
+                        progress_callback(
+                            len(new_emails),
+                            len(new_message_ids),
+                            f"Fetched {len(new_emails)}/{len(new_message_ids)} new emails"
+                        )
+
+                    # Small delay between batches
+                    if batch_start + batch_size < len(message_ids_list):
+                        time.sleep(1)
+
+            return new_emails, list(deleted_ids), current_history_id
+
+        except HttpError as e:
+            error_str = str(e)
+            if '404' in error_str or 'notFound' in error_str:
+                logger.warning(f"History not found (too old?): {e}")
+                return None, None, None
+            raise
 
     def fetch_emails(self, max_results=100, query="in:inbox", progress_callback=None) -> List[Dict]:
         """
@@ -142,52 +407,57 @@ class GmailOperations:
                 progress_callback(len(emails), total_to_fetch, f"Fetching {remaining_to_fetch:,} new emails...")
 
             # Fetch email details using BATCH API for 100x speed improvement!
-            # Process in batches of 100 (Gmail API limit per batch request)
+            # Google recommends batches under 50 for reliability
             # Gmail API limit: 15,000 quota units/min, messages.get = 5 units
-            # Max: 3,000 messages/min = 30 batches/min = 1 batch every 2 seconds
-            # Using very conservative delays due to quota recovery issues
-            batch_size = 100
-            retry_delay = 10.0  # Very conservative: 6 batches/min (well under 30 limit)
+            # Max: 3,000 messages/min = 60 batches of 50/min = 1 batch every second
+            # Using conservative delays due to quota recovery issues
+            batch_size = 50  # Google recommends < 50 for reliability
+            retry_delay = 10.0  # Conservative: 6 batches/min (well under limit)
 
             for batch_start in range(0, len(message_ids), batch_size):
                 batch_end = min(batch_start + batch_size, len(message_ids))
                 batch_ids = message_ids[batch_start:batch_end]
 
-                # First batch: wait much longer to let quota fully recover from previous runs
+                # First batch: wait for quota to recover from previous runs
                 if batch_start == 0:
                     logger.info("Starting batch fetching, waiting 120s for full quota recovery...")
                     print("⏱️  Waiting 2 minutes for Gmail API quota to fully recover...")
                     time.sleep(120)
 
-                # Fetch this batch with retry logic for rate limits
-                max_retries = 5  # More retries to handle quota recovery
-                batch_success = False
-                for retry in range(max_retries):
-                    try:
-                        batch_emails = self._fetch_emails_batch(batch_ids)
-                        emails.extend(batch_emails)
+                # Fetch with retry logic - now handles partial failures!
+                max_retries = 5
+                ids_to_fetch = batch_ids.copy()
 
-                        # Mark these emails as fetched and save checkpoint
+                for retry in range(max_retries):
+                    if not ids_to_fetch:
+                        break  # All succeeded
+
+                    # Fetch batch - returns (successful_emails, failed_ids) tuple
+                    batch_emails, failed_ids_batch = self._fetch_emails_batch(ids_to_fetch)
+
+                    # ALWAYS save successful emails immediately (even on partial failure)
+                    if batch_emails:
+                        emails.extend(batch_emails)
                         for email in batch_emails:
                             fetched_ids.add(email['email_id'])
                         self._save_checkpoint(checkpoint_path, emails, fetched_ids)
+                        logger.info(f"Saved {len(batch_emails)} emails from batch {batch_start}-{batch_end}")
 
-                        batch_success = True
-                        break  # Success, exit retry loop
-                    except HttpError as e:
-                        if 'rateLimitExceeded' in str(e) or 'Quota exceeded' in str(e):
-                            if retry < max_retries - 1:
-                                wait_time = retry_delay * (3 ** retry)  # Steeper exponential backoff
-                                logger.warning(f"Rate limit hit (retry {retry + 1}/{max_retries}), waiting {wait_time:.1f}s...")
-                                time.sleep(wait_time)
-                            else:
-                                logger.error(f"Max retries reached for batch {batch_start}-{batch_end}, skipping...")
-                                # Save checkpoint even on failure so we don't retry this batch
-                                self._save_checkpoint(checkpoint_path, emails, fetched_ids)
+                    # Only retry the failed IDs, not the entire batch!
+                    if failed_ids_batch:
+                        ids_to_fetch = failed_ids_batch
+                        if retry < max_retries - 1:
+                            wait_time = retry_delay * (3 ** retry)
+                            logger.warning(f"Rate limit hit for {len(failed_ids_batch)} emails in batch")
+                            logger.warning(f"Rate limit hit (retry {retry + 1}/{max_retries}), waiting {wait_time:.1f}s...")
+                            time.sleep(wait_time)
                         else:
-                            raise  # Re-raise non-rate-limit errors
+                            logger.error(f"Max retries reached for batch {batch_start}-{batch_end}, skipping...")
+                            self._save_checkpoint(checkpoint_path, emails, fetched_ids)
+                    else:
+                        break  # All succeeded
 
-                # Progress updates (use actual email count, not batch_end)
+                # Progress updates
                 fetched_count = len(emails)
                 if fetched_count % 500 == 0 or fetched_count == total_to_fetch:
                     logger.info(f"  Fetched {fetched_count}/{total_to_fetch} email details...")
@@ -197,7 +467,7 @@ class GmailOperations:
                 if progress_callback:
                     progress_callback(fetched_count, total_to_fetch, f"Fetched {fetched_count:,}/{total_to_fetch:,} emails")
 
-                # Rate limiting: 10 seconds between batches (6 batches/min, well under 30 limit)
+                # Rate limiting between batches
                 time.sleep(retry_delay)
 
             logger.info(f"Successfully fetched {len(emails)} total emails")
@@ -217,35 +487,38 @@ class GmailOperations:
 
         return emails
 
-    def _fetch_emails_batch(self, email_ids: List[str]) -> List[Dict]:
+    def _fetch_emails_batch(self, email_ids: List[str]) -> tuple:
         """
         Fetch multiple emails in a single batch request (100x faster!)
 
         Args:
-            email_ids: List of email IDs to fetch (max 100 per batch)
+            email_ids: List of email IDs to fetch (max 50 per batch recommended)
 
         Returns:
-            List of email dictionaries
-
-        Raises:
-            HttpError: If rate limit is exceeded, will be caught and retried by caller
+            Tuple of (successful_emails, failed_ids) - returns partial results!
         """
         from logger import logger
 
         emails = []
-        rate_limit_errors = []
+        failed_ids = []
         batch = self.service.new_batch_http_request()
+
+        # Map request_id to email_id for tracking failures
+        request_id_map = {}
 
         def callback(request_id, response, exception):
             """Callback for each email in the batch"""
+            email_id = request_id_map.get(request_id)
+
             if exception is not None:
-                # Check if it's a rate limit error
+                # Track failed IDs for retry
+                if email_id:
+                    failed_ids.append(email_id)
                 if isinstance(exception, HttpError):
                     error_str = str(exception)
                     if 'rateLimitExceeded' in error_str or 'Quota exceeded' in error_str:
-                        rate_limit_errors.append(exception)
-                        return
-                logger.warning(f"Error fetching email in batch: {exception}")
+                        return  # Don't log rate limit errors (too noisy)
+                logger.warning(f"Error fetching email {email_id}: {exception}")
                 return
 
             try:
@@ -265,9 +538,13 @@ class GmailOperations:
                 })
             except Exception as e:
                 logger.warning(f"Error parsing email in batch: {e}")
+                if email_id:
+                    failed_ids.append(email_id)
 
-        # Add all emails to batch request
-        for email_id in email_ids:
+        # Add all emails to batch request with tracking
+        for i, email_id in enumerate(email_ids):
+            request_id = f"req_{i}"
+            request_id_map[request_id] = email_id
             batch.add(
                 self.service.users().messages().get(
                     userId='me',
@@ -275,18 +552,18 @@ class GmailOperations:
                     format='metadata',
                     metadataHeaders=['Subject', 'From', 'To', 'Date']
                 ),
-                callback=callback
+                callback=callback,
+                request_id=request_id
             )
 
         # Execute batch (fetches all emails in 1 HTTP request!)
         batch.execute()
 
-        # If we hit rate limits, raise the error so the caller can retry
-        if rate_limit_errors:
-            logger.warning(f"Rate limit hit for {len(rate_limit_errors)} emails in batch")
-            raise rate_limit_errors[0]  # Raise first rate limit error to trigger retry
+        # Return both successful emails AND failed IDs (partial results!)
+        if failed_ids:
+            logger.info(f"Batch: {len(emails)} succeeded, {len(failed_ids)} failed")
 
-        return emails
+        return emails, failed_ids
 
     def _get_email_details(self, email_id: str, metadata_only: bool = True) -> Optional[Dict]:
         """

@@ -81,14 +81,14 @@ class GmailOrganizer:
 
         account = self.accounts[account_name]
         service = account['service']
-        email = account['email']
+        account_email = account['email']
 
         print(f"\n{'='*60}")
-        print(f"Processing: {email} ({account_name})")
+        print(f"Processing: {account_email} ({account_name})")
         print(f"{'='*60}\n")
 
         # Initialize Gmail operations
-        ops = GmailOperations(service, email)
+        ops = GmailOperations(service, account_email)
 
         # Step 1: Create labels
         print("Step 1: Creating Gmail labels...")
@@ -123,12 +123,12 @@ class GmailOrganizer:
         applied_count = 0
         category_counts = {}
 
-        for email in classified_emails:
-            category = email['category']
+        for email_item in classified_emails:
+            category = email_item['category']
             label_id = label_map.get(category)
 
             if label_id:
-                success = ops.apply_label_to_email(email['email_id'], label_id)
+                success = ops.apply_label_to_email(email_item['email_id'], label_id)
                 if success:
                     applied_count += 1
                     category_counts[category] = category_counts.get(category, 0) + 1
@@ -138,7 +138,7 @@ class GmailOrganizer:
 
         # Store results
         self.results[account_name] = {
-            'email': email,
+            'email': account_email,
             'total_processed': len(emails),
             'total_labeled': applied_count,
             'category_counts': category_counts

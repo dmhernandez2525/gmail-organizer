@@ -69,13 +69,34 @@ Gmail Organizer uses AI to automatically:
 - ⭐ Important
 - 📂 Saved (default)
 
-### 4. Powerful Features
+### 4. Incremental Sync (Gmail History API)
+
+**First sync:** Full fetch of all emails (may take hours for large mailboxes)
+
+**Future syncs:** Only fetches NEW emails since last sync (seconds instead of hours!)
+
+How it works:
+- Stores Gmail `historyId` after each sync in `.sync-state/`
+- Uses Gmail's `history.list` API to detect changes
+- Only fetches new/modified emails
+- Caches email metadata locally for instant access
+
+Benefits:
+- ⚡ **Lightning fast**: Future syncs complete in seconds
+- 💾 **Efficient**: No re-downloading 80K+ emails
+- 🔄 **Automatic**: App chooses full vs incremental automatically
+- 📊 **Resumable**: Checkpoints save progress during full sync
+
+### 5. Powerful Features
 - **Pagination Support**: Process unlimited emails (Gmail API handles 500/batch)
+- **Batch API**: Fetches 50 emails per HTTP request (50x faster)
+- **Partial Batch Recovery**: Saves successful emails even when some fail
 - **Auto-Restart**: App automatically recovers from crashes
 - **Comprehensive Logging**: All actions logged to `logs/` folder
 - **Email Count Accuracy**: Uses Gmail Profile API for exact totals
 - **Progress Tracking**: Real-time progress bars and status updates
-- **Error Handling**: Robust error recovery and retry logic
+- **Checkpoint System**: Resumes from where it left off after interruption
+- **Rate Limit Handling**: Exponential backoff with smart retries
 
 ## 🚀 Getting Started
 
@@ -187,6 +208,8 @@ streamlit run frontend.py
 ```
 gmail-organizer/
 ├── .claude-processing/       # Git-ignored: Email exports for Claude Code
+├── .email-cache/             # Git-ignored: Checkpoint files for resumable fetching
+├── .sync-state/              # Git-ignored: Incremental sync state (historyId, cached emails)
 ├── .env                       # Git-ignored: API keys
 ├── .env.example              # Template for environment variables
 ├── client_secret.json        # Git-ignored: Google OAuth credentials
@@ -198,7 +221,7 @@ gmail-organizer/
 ├── requirements.txt          # Python dependencies
 ├── frontend.py              # Streamlit web interface
 ├── gmail_auth.py            # Multi-account OAuth manager
-├── gmail_operations.py      # Gmail API operations
+├── gmail_operations.py      # Gmail API operations + incremental sync
 ├── email_classifier.py      # AI classification with Anthropic
 ├── email_analyzer.py        # Inbox pattern analysis
 ├── claude_code_integration.py # Claude Code CLI integration
@@ -215,11 +238,16 @@ gmail-organizer/
    - Use Claude Code CLI (free, recommended)
    - Use Anthropic API (paid, but token-optimized)
 
-2. **Token Optimization**
+2. **Incremental Sync (Gmail History API)**
+   - Enable incremental sync: ON (default, recommended)
+   - View sync state info for each account
+   - See last sync time and cached email count
+
+3. **Token Optimization**
    - Include email body: OFF (default, saves 70% tokens)
    - Include email body: ON (slightly better accuracy, costs more)
 
-3. **API Configuration**
+4. **API Configuration**
    - Verify Anthropic API key is set
    - View connection status
 
@@ -262,11 +290,23 @@ CATEGORIES = {
 ## 📊 Performance
 
 - **Email Count**: Unlimited (pagination support)
-- **Speed**: ~100 emails/minute with API, ~500 emails/minute with Claude Code
+- **Full Sync Speed**: ~100 emails/minute (with Gmail API rate limiting)
+- **Incremental Sync Speed**: Seconds (only fetches new emails!)
+- **Classification Speed**: ~500 emails/minute with Claude Code
 - **Accuracy**: 90-95% with sender + subject only
-- **Cost**: 
+- **Cost**:
   - Claude Code: $0 (free)
   - Anthropic API: ~$0.20 per 1,000 emails (with optimization)
+
+### Gmail API Limits
+| Limit | Value |
+|-------|-------|
+| Per-user quota | 15,000 units/minute |
+| `messages.get` cost | 5 units each |
+| Max fetches/minute | ~3,000 messages |
+| Batch size | 50 (Google recommended) |
+
+The app handles rate limits automatically with exponential backoff and checkpoint recovery.
 
 ## 🛠️ Troubleshooting
 

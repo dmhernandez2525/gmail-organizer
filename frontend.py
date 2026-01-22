@@ -767,8 +767,8 @@ def process_account(account_name, max_emails, query):
         progress_bar.progress(10)
         logger.info(f"Authenticating account: {account_name}")
 
-        service, email, _ = st.session_state.auth_manager.authenticate_account(account_name)
-        ops = GmailOperations(service, email)
+        service, account_email, _ = st.session_state.auth_manager.authenticate_account(account_name)
+        ops = GmailOperations(service, account_email)
 
         # Create labels
         status_text.text("Creating Gmail labels...")
@@ -781,10 +781,6 @@ def process_account(account_name, max_emails, query):
         # Fetch emails with real-time progress
         logger.info(f"Fetching up to {max_emails} emails with query: '{query}'")
 
-        if max_emails > 10000:
-            estimated_time = (max_emails / 1000) * 0.5
-            st.info(f"📥 Fetching {max_emails:,} emails - Estimated time: ~{estimated_time:.1f} minutes")
-
         # Define progress callback
         def update_progress_fetch(current, total, message):
             if total > 0:
@@ -793,7 +789,18 @@ def process_account(account_name, max_emails, query):
                 progress_bar.progress(min(overall_progress, 50))
             status_text.text(message)
 
-        emails = ops.fetch_emails(max_results=max_emails, query=query, progress_callback=update_progress_fetch)
+        # Use incremental sync if enabled and fetching all emails
+        use_incremental = st.session_state.get('use_incremental_sync', True)
+
+        if use_incremental and max_emails > 50000:  # Large fetch = use sync
+            logger.info("Using incremental sync (sync_emails)")
+            st.info("🔄 Using smart sync (incremental if available)...")
+            emails = ops.sync_emails(query=query, progress_callback=update_progress_fetch)
+        else:
+            if max_emails > 10000:
+                estimated_time = (max_emails / 1000) * 0.5
+                st.info(f"📥 Fetching {max_emails:,} emails - Estimated time: ~{estimated_time:.1f} minutes")
+            emails = ops.fetch_emails(max_results=max_emails, query=query, progress_callback=update_progress_fetch)
 
         if not emails:
             logger.warning(f"No emails found for account {account_name} with query '{query}'")
@@ -812,19 +819,19 @@ def process_account(account_name, max_emails, query):
         # Check if user wants to include email body (costs more tokens)
         use_body = st.session_state.get('use_email_body', False)
 
-        for i, email in enumerate(emails):
+        for i, email_item in enumerate(emails):
             # Token optimization: By default, only use sender + subject (~70% token savings)
-            body_preview = email.get('body_preview', '') if use_body else ""
+            body_preview = email_item.get('body_preview', '') if use_body else ""
 
             category, confidence = st.session_state.classifier.classify_email(
-                email['subject'],
-                email['sender'],
+                email_item['subject'],
+                email_item['sender'],
                 body_preview=body_preview
             )
 
-            email['category'] = category
-            email['confidence'] = confidence
-            classified_emails.append(email)
+            email_item['category'] = category
+            email_item['confidence'] = confidence
+            classified_emails.append(email_item)
 
             if (i + 1) % 10 == 0:
                 progress = 50 + int((i + 1) / len(emails) * 30)
@@ -841,12 +848,12 @@ def process_account(account_name, max_emails, query):
         applied_count = 0
         category_counts = {}
 
-        for i, email in enumerate(classified_emails):
-            category = email['category']
+        for i, email_item in enumerate(classified_emails):
+            category = email_item['category']
             label_id = label_map.get(category)
 
             if label_id:
-                success = ops.apply_label_to_email(email['email_id'], label_id)
+                success = ops.apply_label_to_email(email_item['email_id'], label_id)
                 if success:
                     applied_count += 1
                     category_counts[category] = category_counts.get(category, 0) + 1
@@ -865,7 +872,7 @@ def process_account(account_name, max_emails, query):
 
         # Store results
         st.session_state.processing_results[account_name] = {
-            'email': email,
+            'email': account_email,
             'total_processed': len(emails),
             'total_labeled': applied_count,
             'category_counts': category_counts,
@@ -922,7 +929,10 @@ def results_tab():
         st.metric("Labels Applied", result['total_labeled'])
 
     with col3:
-        success_rate = (result['total_labeled'] / result['total_processed']) * 100
+        if result['total_processed'] > 0:
+            success_rate = (result['total_labeled'] / result['total_processed']) * 100
+        else:
+            success_rate = 0.0
         st.metric("Success Rate", f"{success_rate:.1f}%")
 
     # Category breakdown
@@ -1013,6 +1023,50 @@ def settings_tab():
 
     # Store in session state
     st.session_state.use_email_body = use_email_body
+
+    st.markdown("---")
+
+    st.subheader("🔄 Incremental Sync (Gmail History API)")
+
+    use_incremental_sync = st.checkbox(
+        "Enable incremental sync for future runs (Recommended)",
+        value=True,
+        help="After initial sync, only fetch NEW emails instead of re-scanning everything. Much faster!"
+    )
+
+    st.session_state.use_incremental_sync = use_incremental_sync
+
+    if use_incremental_sync:
+        st.success("""✅ **Incremental sync enabled**
+- First run: Full sync (fetches all emails, saves state)
+- Future runs: Only fetches new/changed emails (seconds instead of hours!)
+        """)
+
+        # Show sync state info if available
+        from gmail_auth import GmailAuthManager
+        from gmail_operations import GmailOperations
+        auth_manager = st.session_state.auth_manager
+        accounts = auth_manager.list_authenticated_accounts()
+
+        if accounts:
+            with st.expander("📊 Sync State Info"):
+                for name, email in accounts:
+                    try:
+                        service, _, _ = auth_manager.authenticate_account(name)
+                        ops = GmailOperations(service, email)
+                        sync_state = ops._load_sync_state()
+
+                        if sync_state.get("history_id"):
+                            st.markdown(f"**{email}**")
+                            st.text(f"  Last sync: {sync_state.get('last_sync_time', 'Unknown')}")
+                            st.text(f"  Cached emails: {sync_state.get('total_synced', 0):,}")
+                            st.text(f"  History ID: {sync_state.get('history_id', 'N/A')}")
+                        else:
+                            st.markdown(f"**{email}**: No sync state yet (will do full sync first)")
+                    except Exception as e:
+                        st.warning(f"Could not load sync state for {email}: {e}")
+    else:
+        st.warning("Full sync will be performed every time (slower for large mailboxes)")
 
     st.markdown("---")
 
