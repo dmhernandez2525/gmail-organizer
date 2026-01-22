@@ -131,7 +131,7 @@ def launch_claude_code_terminal(prompt_file: str) -> None:
     Args:
         prompt_file: Path to the prompt file
     """
-    project_dir = Path(__file__).parent
+    project_dir = Path(__file__).parent.parent
 
     # Create AppleScript to open Terminal and run Claude Code
     applescript = f'''

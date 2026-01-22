@@ -18,9 +18,9 @@ class GmailOperations:
         self.service = service
         self.account_email = account_email
         self.labels_cache = None
-        self.checkpoint_dir = Path(__file__).parent / ".email-cache"
+        self.checkpoint_dir = Path(__file__).parent.parent / ".email-cache"
         self.checkpoint_dir.mkdir(exist_ok=True)
-        self.sync_state_dir = Path(__file__).parent / ".sync-state"
+        self.sync_state_dir = Path(__file__).parent.parent / ".sync-state"
         self.sync_state_dir.mkdir(exist_ok=True)
 
     def _get_checkpoint_path(self, query: str) -> Path:

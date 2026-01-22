@@ -4,8 +4,8 @@ import logging
 import os
 from datetime import datetime
 
-# Create logs directory if it doesn't exist
-LOGS_DIR = os.path.join(os.path.dirname(__file__), 'logs')
+# Create logs directory if it doesn't exist (at project root)
+LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 # Create log filename with timestamp
