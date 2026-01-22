@@ -1,0 +1,42 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="syncGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4"/>
+      <stop offset="100%" style="stop-color:#3B82F6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Circular sync arrows -->
+  <g transform="translate(200,200)">
+    <!-- Outer ring -->
+    <circle cx="0" cy="0" r="120" fill="none" stroke="url(#syncGrad)" stroke-width="8" stroke-dasharray="30 10" opacity="0.3"/>
+
+    <!-- Inner ring with emails -->
+    <circle cx="0" cy="0" r="80" fill="none" stroke="#7C3AED" stroke-width="4"/>
+
+    <!-- Sync arrows -->
+    <path d="M-60,-60 A85,85 0 0,1 60,-60" fill="none" stroke="url(#syncGrad)" stroke-width="6" stroke-linecap="round"/>
+    <polygon points="65,-55 55,-70 75,-70" fill="#3B82F6"/>
+
+    <path d="M60,60 A85,85 0 0,1 -60,60" fill="none" stroke="url(#syncGrad)" stroke-width="6" stroke-linecap="round"/>
+    <polygon points="-65,55 -55,70 -75,70" fill="#06B6D4"/>
+
+    <!-- Center icon -->
+    <circle cx="0" cy="0" r="30" fill="#7C3AED" opacity="0.2"/>
+    <text x="0" y="8" font-size="30" text-anchor="middle" fill="#7C3AED">⚡</text>
+
+    <!-- Floating data points -->
+    <circle cx="-100" cy="0" r="8" fill="#06B6D4">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="100" cy="0" r="8" fill="#3B82F6">
+      <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="0" cy="-100" r="8" fill="#7C3AED">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="0" cy="100" r="8" fill="#7C3AED">
+      <animate attributeName="opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>

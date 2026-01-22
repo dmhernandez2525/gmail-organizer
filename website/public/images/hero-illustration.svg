@@ -1,0 +1,55 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .brain-fill { fill: #7C3AED; }
+    .email-icon-fill { fill: #3B82F6; }
+    .neural-line { stroke: #06B6D4; stroke-width: 2; fill: none; }
+    .node { fill: #06B6D4; }
+  </style>
+  <g id="ai-illustration">
+    <!-- AI Brain -->
+    <g id="ai-brain" transform="translate(400, 300) scale(1.2)">
+      <path class="brain-fill" d="M-5,1C-5,1-5.01,0.98-5.04,0.95C-5.38-0.03-6.41-0.54-6.53-0.5C-6.81-0.4-7.14,0.02-7.16,0.51C-7.17,0.94-6.98,1.29-6.66,1.5C-6.23,1.78-5.6,1.75-5.26,1.45C-5.11,1.32-5,1.16-5,1z M-2.34,4.24C-2.34,4.24-2.73,4.42-3.1,4.43C-3.86,4.45-4.43,3.95-4.45,3.19C-4.47,2.44-3.96,1.87-3.2,1.85C-2.45,1.83-1.87,2.34-1.85,3.1C-1.83,3.86-2.34,4.24-2.34,4.24z M-2.83-0.57C-2.83-0.57-2.76-0.63-2.71-0.67C-2.03-1.25-1.02-1.06-0.44-0.38C0.14,0.3,0.33,1.31-0.35,1.89C-1.03,2.47-2.04,2.28-2.62,1.6C-3.2,0.92-3.39-0.09-2.71-0.67C-2.76-0.63-2.83-0.57-2.83-0.57z M1.82,4.82C1.82,4.82,1.27,5.03,0.73,4.95C-0.37,4.78-1.08,3.83-0.91,2.73C-0.73,1.63,0.22,0.92,1.32,1.09C2.42,1.26,3.13,2.21,2.95,3.31C2.78,4.41,1.82,4.82,1.82,4.82z M4.81-0.78C4.81-0.78,4.82-0.86,4.81-0.93C4.69-2.02,3.65-2.67,2.56-2.55C1.47-2.43,0.82-1.39,0.94-0.3C1.06,0.79,2.1,1.44,3.19,1.32C4.28,1.2,4.93,0.16,4.81-0.93C4.82-0.86,4.81-0.78,4.81-0.78z M-10.5-0.12C-10.5-0.12-10.55-0.15-10.59-0.18C-11.23-0.7-12.08-0.75-12.6-0.1C-13.12,0.55-13.07,1.4-12.42,1.92C-11.77,2.44-10.92,2.49-10.4,1.84C-9.88,1.19-9.93,0.34-10.59-0.18C-10.55-0.15-10.5-0.12-10.5-0.12z" transform="scale(10)"/>
+    </g>
+
+    <!-- Email Icons -->
+    <g id="email-icons">
+      <path class="email-icon-fill" d="M60 150 L100 180 L140 150 L100 120 Z" />
+      <path class="email-icon-fill" d="M60 150 L140 150 L100 180 Z" />
+
+      <path class="email-icon-fill" d="M250 50 L290 80 L330 50 L290 20 Z" />
+      <path class="email-icon-fill" d="M250 50 L330 50 L290 80 Z" />
+
+      <path class="email-icon-fill" d="M650 80 L690 110 L730 80 L690 50 Z" />
+      <path class="email-icon-fill" d="M650 80 L730 80 L690 110 Z" />
+      
+      <path class="email-icon-fill" d="M700 450 L740 480 L780 450 L740 420 Z" />
+      <path class="email-icon-fill" d="M700 450 L780 450 L740 480 Z" />
+
+      <path class="email-icon-fill" d="M120 500 L160 530 L200 500 L160 470 Z" />
+      <path class="email-icon-fill" d="M120 500 L200 500 L160 530 Z" />
+    </g>
+
+    <!-- Neural Network Lines -->
+    <g id="neural-lines">
+      <path class="neural-line" d="M140,160 Q250,250 380,290" />
+      <circle class="node" cx="140" cy="160" r="4"/>
+      <circle class="node" cx="380" cy="290" r="4"/>
+
+      <path class="neural-line" d="M300,80 Q350,180 390,280" />
+      <circle class="node" cx="300" cy="80" r="4"/>
+      <circle class="node" cx="390" cy="280" r="4"/>
+
+      <path class="neural-line" d="M650,100 Q550,200 420,300" />
+      <circle class="node" cx="650" cy="100" r="4"/>
+      <circle class="node" cx="420" cy="300" r="4"/>
+
+      <path class="neural-line" d="M710,450 Q550,400 420,320" />
+      <circle class="node" cx="710" cy="450" r="4"/>
+      <circle class="node" cx="420" cy="320" r="4"/>
+
+      <path class="neural-line" d="M180,500 Q300,400 400,330" />
+      <circle class="node" cx="180" cy="500" r="4"/>
+      <circle class="node" cx="400" cy="330" r="4"/>
+    </g>
+  </g>
+</svg>
