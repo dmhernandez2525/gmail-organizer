@@ -347,6 +347,7 @@ MIT License - See LICENSE file for details
 
 - Gmail API by Google
 - [Streamlit](https://streamlit.io/) for the UI
+- Claude Code CLI for local processing
 
 ## 📧 Contact
 
