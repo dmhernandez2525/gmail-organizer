@@ -24,6 +24,7 @@ from gmail_organizer.storage import StorageAnalyzer
 from gmail_organizer.export import EmailExporter
 from gmail_organizer.themes import ThemeManager
 from gmail_organizer.scheduler import SyncScheduler
+from gmail_organizer.notifications import NotificationManager, NotificationEvent, EVENT_TYPES
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -61,6 +62,9 @@ if 'current_theme' not in st.session_state:
 
 if 'scheduler' not in st.session_state:
     st.session_state.scheduler = SyncScheduler()
+
+if 'notification_manager' not in st.session_state:
+    st.session_state.notification_manager = NotificationManager()
 
 # Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
@@ -3076,6 +3080,137 @@ def export_tab():
                 st.error(f"Export failed: {e}")
 
 
+def notifications_tab():
+    """Webhook and notifications management"""
+    st.header("Notifications & Webhooks")
+    st.markdown("Configure webhook endpoints to receive notifications about email events.")
+
+    notif_mgr = st.session_state.notification_manager
+
+    stats = notif_mgr.get_stats()
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Webhooks", stats['webhook_count'])
+    with col2:
+        st.metric("Active", stats['enabled_count'])
+    with col3:
+        st.metric("Notifications Sent", stats['total_notifications'])
+    with col4:
+        st.metric("Failures", stats['recent_failures'])
+
+    st.markdown("---")
+
+    webhooks_view, history_view, test_view = st.tabs(["Webhooks", "History", "Test"])
+
+    with webhooks_view:
+        st.subheader("Add Webhook")
+        with st.form("add_webhook_form"):
+            webhook_url = st.text_input("Webhook URL", placeholder="https://example.com/webhook")
+            webhook_name = st.text_input("Name (optional)", placeholder="My Slack webhook")
+            webhook_events = st.multiselect(
+                "Events to subscribe",
+                options=list(EVENT_TYPES.keys()),
+                default=["sync_complete"],
+                format_func=lambda x: f"{x}: {EVENT_TYPES.get(x, '')}",
+            )
+            webhook_secret = st.text_input("Secret (optional)", type="password",
+                                           help="Used for HMAC signature verification")
+
+            if st.form_submit_button("Add Webhook", type="primary"):
+                if webhook_url:
+                    notif_mgr.add_webhook(
+                        url=webhook_url,
+                        name=webhook_name,
+                        events=webhook_events,
+                        secret=webhook_secret,
+                    )
+                    st.success(f"Webhook added: {webhook_name or webhook_url[:30]}")
+                    st.rerun()
+                else:
+                    st.error("URL is required.")
+
+        # List existing webhooks
+        webhooks = notif_mgr.get_webhooks()
+        if webhooks:
+            st.markdown("---")
+            st.subheader(f"Configured Webhooks ({len(webhooks)})")
+
+            for i, wh in enumerate(webhooks):
+                status_icon = "🟢" if wh.enabled else "🔴"
+                fail_text = f" ({wh.failure_count} failures)" if wh.failure_count else ""
+
+                with st.expander(f"{status_icon} {wh.name or wh.url[:40]}{fail_text}"):
+                    st.markdown(f"**URL:** `{wh.url}`")
+                    st.markdown(f"**Events:** {', '.join(wh.events)}")
+                    st.markdown(f"**Enabled:** {'Yes' if wh.enabled else 'No'}")
+                    if wh.last_triggered:
+                        st.markdown(f"**Last triggered:** {wh.last_triggered[:19]}")
+
+                    btn_col1, btn_col2 = st.columns(2)
+                    with btn_col1:
+                        new_state = not wh.enabled
+                        if st.button(
+                            "Enable" if new_state else "Disable",
+                            key=f"toggle_wh_{i}"
+                        ):
+                            notif_mgr.update_webhook(i, enabled=new_state)
+                            st.rerun()
+                    with btn_col2:
+                        if st.button("Remove", key=f"remove_wh_{i}"):
+                            notif_mgr.remove_webhook(i)
+                            st.rerun()
+
+    with history_view:
+        history = notif_mgr.get_history(limit=50)
+
+        if not history:
+            st.info("No notification history yet.")
+        else:
+            if st.button("Clear History", key="clear_notif_history"):
+                notif_mgr.clear_history()
+                st.rerun()
+
+            for entry in history:
+                event_icon = {
+                    "sync_complete": "🔄",
+                    "security_alert": "🔴",
+                    "priority_email": "⭐",
+                    "follow_up_overdue": "⏰",
+                    "scheduled_sync": "📅",
+                    "export_complete": "📦",
+                }.get(entry.get("event_type", ""), "📧")
+
+                timestamp = entry.get("timestamp", "")[:19]
+                st.markdown(
+                    f"{event_icon} **{entry.get('title', '')}** "
+                    f"({entry.get('account_name', '')}) - "
+                    f"{entry.get('webhooks_fired', 0)} webhook(s) - "
+                    f"`{timestamp}`"
+                )
+
+    with test_view:
+        st.subheader("Send Test Notification")
+        st.markdown("Send a test event to verify your webhook configuration.")
+
+        test_event_type = st.selectbox(
+            "Event type",
+            list(EVENT_TYPES.keys()),
+            format_func=lambda x: f"{x}: {EVENT_TYPES[x]}",
+            key="test_event_type"
+        )
+
+        if st.button("Send Test", type="primary", key="send_test_notif"):
+            event = NotificationEvent(
+                event_type=test_event_type,
+                account_name="test",
+                title=f"Test: {test_event_type}",
+                message=f"This is a test notification for event type: {test_event_type}",
+                data={"test": True},
+            )
+            notif_mgr.notify(event)
+            st.success("Test notification sent! Check History tab and your webhook endpoints.")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -3103,8 +3238,8 @@ def main():
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
-        "Summaries", "Reputation", "Storage", "Export", "Analyze", "Process",
-        "Results", "Settings"
+        "Summaries", "Reputation", "Storage", "Export", "Notifications",
+        "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -3136,12 +3271,14 @@ def main():
     with tabs[13]:
         export_tab()
     with tabs[14]:
-        analyze_tab()
+        notifications_tab()
     with tabs[15]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[16]:
-        results_tab()
+        process_emails_tab()
     with tabs[17]:
+        results_tab()
+    with tabs[18]:
         settings_tab()
 
     # Auto-refresh while syncing
