@@ -102,14 +102,16 @@ Gmail API wrapper with two fetch strategies:
 
 ### App UI (`app.py`)
 
-Five-tab Streamlit interface with sidebar controls.
+Seven-tab Streamlit interface with sidebar controls.
 
 **Tabs:**
 1. **Dashboard** - Account overview, sync status cards, "Sync All" button
-2. **Analyze** - Pattern analysis using already-synced data
-3. **Process** - Classification using synced data (Claude Code or API)
-4. **Results** - Multi-account results with search/filter
-5. **Settings** - Classification method, sync config, data management
+2. **Analytics** - Email volume/time charts, hourly/weekly patterns, top senders/domains
+3. **Smart Filters** - Pattern detection, filter suggestions, bulk create, existing filter management
+4. **Analyze** - Pattern analysis using already-synced data
+5. **Process** - Classification using synced data (Claude Code or API)
+6. **Results** - Multi-account results with search/filter
+7. **Settings** - Classification method, sync config, data management
 
 **Auto-refresh mechanism:**
 ```python
@@ -121,6 +123,39 @@ if sync_mgr.is_any_syncing():
 - Polls every 2 seconds while any sync is active
 - Stops automatically when all syncs complete
 - Works with any Streamlit version (no fragment dependency)
+
+### SmartFilterGenerator (`gmail_organizer/filters.py`)
+
+Analyzes classified email patterns to discover and create Gmail filters automatically.
+
+**Pattern detection strategies:**
+1. **Sender patterns** - Identifies senders that consistently map to a category
+2. **Domain patterns** - Finds domains with multiple senders in the same category
+3. **Subject keyword patterns** - Discovers subject line keywords indicating categories
+
+**API:**
+```
+SmartFilterGenerator
+├── analyze_patterns(emails, min_frequency)    # Discover filter-worthy patterns
+├── preview_filter(rule, emails)               # Preview which emails would match
+├── create_filter(rule)                        # Create filter via Gmail API
+├── list_existing_filters()                    # List current Gmail filters
+├── delete_filter(filter_id)                   # Remove a Gmail filter
+└── _deduplicate_rules(rules)                  # Remove overlapping rules
+```
+
+**FilterRule fields:**
+- `criteria`: Dict with `from`, `subject`, or `hasTheWord` keys
+- `action_label`: Gmail label name to apply
+- `label_id`: Gmail label ID (resolved before creation)
+- `description`: Human-readable rule explanation
+- `match_count`: Number of emails matching this pattern
+
+**Gmail filter creation flow:**
+1. Analyze patterns from classified emails
+2. User previews matched emails per filter
+3. Label is created if it doesn't exist (`_get_or_create_label`)
+4. Filter created via `users.settings.filters.create` API
 
 ## Data Flow
 

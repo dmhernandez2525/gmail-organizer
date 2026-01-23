@@ -10,6 +10,7 @@ from gmail_organizer.config import CATEGORIES
 from gmail_organizer.logger import setup_logger
 from gmail_organizer.sync_manager import SyncManager
 from gmail_organizer.analytics import EmailAnalytics
+from gmail_organizer.filters import SmartFilterGenerator, FilterRule
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -1000,6 +1001,419 @@ def analytics_tab():
             st.bar_chart(labels_df.set_index('Label'))
 
 
+def filters_tab():
+    """Smart filter generator - discover and create Gmail filters from patterns"""
+    st.header("Smart Filters")
+    st.markdown("Discover email patterns and create Gmail filters automatically.")
+
+    sync_mgr = st.session_state.sync_manager
+
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    # Filter to accounts with synced + classified data
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    # Account selection
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="filters_account")
+    account_name = account_options[selected_label]
+
+    emails = sync_mgr.get_emails(account_name)
+
+    # Check if emails have been classified
+    classified = [e for e in emails if e.get('category')]
+    has_classified = len(classified) > 0
+
+    # Get the service for this account
+    service = None
+    for name, email in accounts:
+        if name == account_name:
+            service = st.session_state.auth_manager.get_service(name)
+            break
+
+    filter_gen = SmartFilterGenerator(service=service)
+
+    st.markdown("---")
+
+    # Two sections: Generate filters from patterns, and manage existing filters
+    gen_col, manage_col = st.tabs(["Generate Filters", "Manage Existing"])
+
+    with gen_col:
+        st.subheader("Generate Filters from Patterns")
+
+        if not has_classified:
+            st.info(
+                "For best results, classify your emails first (Process tab). "
+                "Filters will be generated from sender/domain/subject patterns."
+            )
+            # Still allow pattern detection on raw emails using labels as categories
+            use_labels = st.checkbox("Use Gmail labels as categories instead",
+                                     value=True, key="filters_use_labels")
+            if use_labels:
+                # Create pseudo-classified emails from label data
+                for e in emails:
+                    labels = e.get('labels', [])
+                    # Use first non-system label as category
+                    for lbl in labels:
+                        if lbl not in ('INBOX', 'SENT', 'DRAFT', 'SPAM', 'TRASH',
+                                       'UNREAD', 'STARRED', 'IMPORTANT') and \
+                           not lbl.startswith('CATEGORY_'):
+                            e['category'] = lbl
+                            break
+                classified = [e for e in emails if e.get('category')]
+
+        if not classified:
+            st.warning("No categorized emails found. Classify emails in the Process tab first.")
+            return
+
+        # Configuration
+        col1, col2 = st.columns(2)
+        with col1:
+            min_frequency = st.slider(
+                "Minimum pattern frequency",
+                min_value=2, max_value=20, value=3,
+                help="How many times a pattern must appear to suggest a filter",
+                key="filters_min_freq"
+            )
+        with col2:
+            st.metric("Classified Emails", f"{len(classified):,}")
+            categories = set(e.get('category', '') for e in classified if e.get('category'))
+            st.caption(f"{len(categories)} categories detected")
+
+        if st.button("Analyze Patterns & Generate Filters", type="primary",
+                     key="filters_generate"):
+            with st.spinner("Analyzing email patterns..."):
+                rules = filter_gen.analyze_patterns(classified, min_frequency=min_frequency)
+                st.session_state[f'filter_rules_{account_name}'] = rules
+
+        # Display generated rules
+        rules_key = f'filter_rules_{account_name}'
+        if rules_key in st.session_state and st.session_state[rules_key]:
+            rules = st.session_state[rules_key]
+
+            st.success(f"Found {len(rules)} filter suggestions")
+            st.markdown("---")
+
+            # Group rules by type
+            sender_rules = [r for r in rules if 'from' in r.criteria and
+                           not r.criteria['from'].startswith('@')]
+            domain_rules = [r for r in rules if 'from' in r.criteria and
+                           r.criteria['from'].startswith('@')]
+            subject_rules = [r for r in rules if 'subject' in r.criteria]
+
+            # Sender-based filters
+            if sender_rules:
+                st.subheader(f"Sender Filters ({len(sender_rules)})")
+                for i, rule in enumerate(sender_rules[:20]):
+                    with st.expander(
+                        f"{rule.description} ({rule.match_count} matches)",
+                        expanded=False
+                    ):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**Criteria:** From `{rule.criteria['from']}`")
+                            st.markdown(f"**Action:** Apply label `{rule.action_label}`")
+                            st.markdown(f"**Matches:** {rule.match_count} emails")
+                        with col2:
+                            # Preview button
+                            if st.button("Preview", key=f"preview_sender_{i}"):
+                                matches = filter_gen.preview_filter(rule, emails)
+                                st.session_state[f'preview_{account_name}_sender_{i}'] = matches
+
+                            if service:
+                                if st.button("Create Filter", key=f"create_sender_{i}",
+                                             type="primary"):
+                                    _create_filter_with_label(filter_gen, rule, service,
+                                                             account_name)
+
+                        # Show preview if available
+                        preview_key = f'preview_{account_name}_sender_{i}'
+                        if preview_key in st.session_state:
+                            matches = st.session_state[preview_key]
+                            st.caption(f"Would match {len(matches)} emails:")
+                            preview_data = [
+                                {'From': m.get('sender', '')[:50],
+                                 'Subject': m.get('subject', '')[:60],
+                                 'Date': m.get('date', '')[:16]}
+                                for m in matches[:10]
+                            ]
+                            st.dataframe(pd.DataFrame(preview_data),
+                                        use_container_width=True)
+                            if len(matches) > 10:
+                                st.caption(f"...and {len(matches) - 10} more")
+
+            # Domain-based filters
+            if domain_rules:
+                st.subheader(f"Domain Filters ({len(domain_rules)})")
+                for i, rule in enumerate(domain_rules[:15]):
+                    with st.expander(
+                        f"{rule.description} ({rule.match_count} matches)",
+                        expanded=False
+                    ):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**Criteria:** From `{rule.criteria['from']}`")
+                            st.markdown(f"**Action:** Apply label `{rule.action_label}`")
+                            st.markdown(f"**Matches:** {rule.match_count} emails")
+                        with col2:
+                            if st.button("Preview", key=f"preview_domain_{i}"):
+                                matches = filter_gen.preview_filter(rule, emails)
+                                st.session_state[f'preview_{account_name}_domain_{i}'] = matches
+
+                            if service:
+                                if st.button("Create Filter", key=f"create_domain_{i}",
+                                             type="primary"):
+                                    _create_filter_with_label(filter_gen, rule, service,
+                                                             account_name)
+
+                        preview_key = f'preview_{account_name}_domain_{i}'
+                        if preview_key in st.session_state:
+                            matches = st.session_state[preview_key]
+                            st.caption(f"Would match {len(matches)} emails:")
+                            preview_data = [
+                                {'From': m.get('sender', '')[:50],
+                                 'Subject': m.get('subject', '')[:60],
+                                 'Date': m.get('date', '')[:16]}
+                                for m in matches[:10]
+                            ]
+                            st.dataframe(pd.DataFrame(preview_data),
+                                        use_container_width=True)
+                            if len(matches) > 10:
+                                st.caption(f"...and {len(matches) - 10} more")
+
+            # Subject keyword filters
+            if subject_rules:
+                st.subheader(f"Subject Keyword Filters ({len(subject_rules)})")
+                for i, rule in enumerate(subject_rules[:10]):
+                    with st.expander(
+                        f"{rule.description} ({rule.match_count} matches)",
+                        expanded=False
+                    ):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(
+                                f"**Criteria:** Subject contains "
+                                f"`{rule.criteria['subject']}`"
+                            )
+                            st.markdown(f"**Action:** Apply label `{rule.action_label}`")
+                            st.markdown(f"**Matches:** {rule.match_count} emails")
+                        with col2:
+                            if st.button("Preview", key=f"preview_subject_{i}"):
+                                matches = filter_gen.preview_filter(rule, emails)
+                                st.session_state[f'preview_{account_name}_subject_{i}'] = matches
+
+                            if service:
+                                if st.button("Create Filter", key=f"create_subject_{i}",
+                                             type="primary"):
+                                    _create_filter_with_label(filter_gen, rule, service,
+                                                             account_name)
+
+                        preview_key = f'preview_{account_name}_subject_{i}'
+                        if preview_key in st.session_state:
+                            matches = st.session_state[preview_key]
+                            st.caption(f"Would match {len(matches)} emails:")
+                            preview_data = [
+                                {'From': m.get('sender', '')[:50],
+                                 'Subject': m.get('subject', '')[:60],
+                                 'Date': m.get('date', '')[:16]}
+                                for m in matches[:10]
+                            ]
+                            st.dataframe(pd.DataFrame(preview_data),
+                                        use_container_width=True)
+                            if len(matches) > 10:
+                                st.caption(f"...and {len(matches) - 10} more")
+
+            # Bulk create section
+            if service:
+                st.markdown("---")
+                st.subheader("Bulk Create Filters")
+                st.markdown(
+                    "Select filters to create in bulk. Labels will be created automatically."
+                )
+
+                selected_indices = []
+                for i, rule in enumerate(rules):
+                    if st.checkbox(
+                        f"{rule.description} ({rule.match_count} matches)",
+                        key=f"bulk_select_{i}"
+                    ):
+                        selected_indices.append(i)
+
+                if selected_indices:
+                    st.info(f"{len(selected_indices)} filters selected")
+                    if st.button(
+                        f"Create {len(selected_indices)} Filters",
+                        type="primary",
+                        key="bulk_create_filters"
+                    ):
+                        progress = st.progress(0)
+                        created = 0
+                        errors = 0
+                        for idx, sel_idx in enumerate(selected_indices):
+                            rule = rules[sel_idx]
+                            success = _create_filter_with_label(
+                                filter_gen, rule, service, account_name, quiet=True
+                            )
+                            if success:
+                                created += 1
+                            else:
+                                errors += 1
+                            progress.progress((idx + 1) / len(selected_indices))
+
+                        if errors == 0:
+                            st.success(f"Successfully created {created} filters!")
+                        else:
+                            st.warning(
+                                f"Created {created} filters, {errors} failed. "
+                                f"Check logs for details."
+                            )
+
+    with manage_col:
+        st.subheader("Existing Gmail Filters")
+
+        if not service:
+            st.warning("Could not connect to Gmail API for this account.")
+            return
+
+        if st.button("Load Existing Filters", key="load_existing_filters"):
+            with st.spinner("Fetching filters from Gmail..."):
+                existing = filter_gen.list_existing_filters()
+                st.session_state[f'existing_filters_{account_name}'] = existing
+
+        existing_key = f'existing_filters_{account_name}'
+        if existing_key in st.session_state:
+            existing = st.session_state[existing_key]
+
+            if not existing:
+                st.info("No existing filters found in this Gmail account.")
+            else:
+                st.success(f"Found {len(existing)} existing filters")
+
+                for i, filt in enumerate(existing):
+                    criteria = filt.get('criteria', {})
+                    action = filt.get('action', {})
+
+                    # Build description
+                    desc_parts = []
+                    if criteria.get('from'):
+                        desc_parts.append(f"From: {criteria['from']}")
+                    if criteria.get('to'):
+                        desc_parts.append(f"To: {criteria['to']}")
+                    if criteria.get('subject'):
+                        desc_parts.append(f"Subject: {criteria['subject']}")
+                    if criteria.get('query'):
+                        desc_parts.append(f"Query: {criteria['query']}")
+                    if criteria.get('hasTheWord'):
+                        desc_parts.append(f"Has: {criteria['hasTheWord']}")
+
+                    desc = " | ".join(desc_parts) if desc_parts else "Custom filter"
+
+                    # Build action description
+                    action_parts = []
+                    if action.get('addLabelIds'):
+                        action_parts.append(
+                            f"Labels: {', '.join(action['addLabelIds'])}"
+                        )
+                    if action.get('removeLabelIds'):
+                        action_parts.append(
+                            f"Remove: {', '.join(action['removeLabelIds'])}"
+                        )
+                    if action.get('forward'):
+                        action_parts.append(f"Forward: {action['forward']}")
+
+                    action_desc = " | ".join(action_parts) if action_parts else "No action"
+
+                    with st.expander(f"Filter {i+1}: {desc}", expanded=False):
+                        st.markdown(f"**Criteria:** {desc}")
+                        st.markdown(f"**Action:** {action_desc}")
+                        st.caption(f"Filter ID: {filt.get('id', 'N/A')}")
+
+                        if st.button(
+                            "Delete Filter", key=f"delete_filter_{i}",
+                            type="secondary"
+                        ):
+                            filter_id = filt.get('id')
+                            if filter_id:
+                                success = filter_gen.delete_filter(filter_id)
+                                if success:
+                                    st.success("Filter deleted!")
+                                    # Refresh the list
+                                    del st.session_state[existing_key]
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete filter.")
+
+
+def _create_filter_with_label(filter_gen: SmartFilterGenerator, rule: FilterRule,
+                              service, account_name: str, quiet: bool = False) -> bool:
+    """Create a Gmail filter, creating the label first if needed."""
+    try:
+        # First ensure the label exists
+        label_name = rule.action_label
+        label_id = _get_or_create_label(service, label_name)
+
+        if label_id:
+            rule.label_id = label_id
+            result = filter_gen.create_filter(rule)
+            if result:
+                if not quiet:
+                    st.success(f"Filter created: {rule.description}")
+                return True
+            else:
+                if not quiet:
+                    st.error(f"Failed to create filter: {rule.description}")
+                return False
+        else:
+            if not quiet:
+                st.error(f"Failed to create label: {label_name}")
+            return False
+    except Exception as e:
+        if not quiet:
+            st.error(f"Error: {e}")
+        logger.error(f"Error creating filter for {account_name}: {e}")
+        return False
+
+
+def _get_or_create_label(service, label_name: str) -> str:
+    """Get existing label ID or create a new label, returns label ID."""
+    try:
+        # List existing labels
+        results = service.users().labels().list(userId='me').execute()
+        labels = results.get('labels', [])
+
+        # Check if label already exists
+        for label in labels:
+            if label['name'].lower() == label_name.lower():
+                return label['id']
+
+        # Create the label
+        label_body = {
+            'name': label_name,
+            'labelListVisibility': 'labelShow',
+            'messageListVisibility': 'show'
+        }
+        created = service.users().labels().create(
+            userId='me', body=label_body
+        ).execute()
+        return created['id']
+    except Exception as e:
+        logger.error(f"Error with label '{label_name}': {e}")
+        return None
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -1019,8 +1433,9 @@ def main():
     render_sidebar()
 
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Dashboard", "Analytics", "Analyze", "Process", "Results", "Settings"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "Dashboard", "Analytics", "Smart Filters", "Analyze", "Process",
+        "Results", "Settings"
     ])
 
     with tab1:
@@ -1028,12 +1443,14 @@ def main():
     with tab2:
         analytics_tab()
     with tab3:
-        analyze_tab()
+        filters_tab()
     with tab4:
-        process_emails_tab()
+        analyze_tab()
     with tab5:
-        results_tab()
+        process_emails_tab()
     with tab6:
+        results_tab()
+    with tab7:
         settings_tab()
 
     # Auto-refresh while syncing

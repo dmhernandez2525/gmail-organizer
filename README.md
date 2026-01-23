@@ -115,6 +115,25 @@ Benefits:
 - **Rate Limit Handling**: Exponential backoff with smart retries
 - **Disk Fallback**: Loads email data from disk if not in memory
 
+### 6. Smart Filters
+
+Automatically discover email patterns and create Gmail filters:
+
+- **Sender Patterns**: Identifies senders that consistently map to a category
+- **Domain Patterns**: Finds domains with multiple senders in the same category
+- **Subject Keywords**: Discovers subject line keywords indicating categories
+- **Preview**: See which emails each filter would match before creating
+- **Bulk Create**: Select multiple filters and create them all at once
+- **Manage Existing**: View and delete existing Gmail filters
+- **Auto-Label**: Creates Gmail labels automatically if they don't exist
+
+**How it works:**
+1. Classify your emails first (Process tab)
+2. Go to Smart Filters tab and click "Analyze Patterns"
+3. Review suggested filters with match counts
+4. Preview matched emails for each filter
+5. Create individually or in bulk
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -236,6 +255,7 @@ gmail-organizer/
 │   ├── classifier.py         # AI classification with Anthropic
 │   ├── analyzer.py           # Inbox pattern analysis
 │   ├── claude_integration.py # Claude Code CLI integration
+│   ├── filters.py            # Smart filter pattern detection & creation
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
@@ -399,7 +419,7 @@ The email processing runs locally on your machine for privacy. Clone the repo an
 - [x] **Non-Blocking UI** - Switch tabs/accounts without stopping syncs
 - [x] **Data Persistence** - Email data never deleted, loads from disk on restart
 - [x] **5-Tab Dashboard UI** - Dashboard, Analyze, Process, Results, Settings
-- [ ] **Smart Filters** - Automatic filter rule generation
+- [x] **Smart Filters** - Auto-generate Gmail filters from sender/domain/subject patterns with bulk create and preview
 - [x] **Analytics Dashboard** - Email volume over time, hourly/weekly patterns, sender/domain breakdown, inbox growth charts
 - [ ] **Mobile Companion** - iOS/Android notification app
 - [ ] **Calendar Integration** - Auto-schedule from email context
