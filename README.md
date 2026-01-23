@@ -400,7 +400,7 @@ The email processing runs locally on your machine for privacy. Clone the repo an
 - [x] **Data Persistence** - Email data never deleted, loads from disk on restart
 - [x] **5-Tab Dashboard UI** - Dashboard, Analyze, Process, Results, Settings
 - [ ] **Smart Filters** - Automatic filter rule generation
-- [ ] **Analytics Dashboard** - Email insights and trends
+- [x] **Analytics Dashboard** - Email volume over time, hourly/weekly patterns, sender/domain breakdown, inbox growth charts
 - [ ] **Mobile Companion** - iOS/Android notification app
 - [ ] **Calendar Integration** - Auto-schedule from email context
 

@@ -20,7 +20,8 @@ import {
   Rocket,
   Target,
   Menu,
-  X
+  X,
+  BarChart3
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -305,6 +306,12 @@ function FeaturesSection() {
       title: 'Privacy First',
       description: 'All processing happens locally on your machine. Email content only sent to AI for classification. Zero external storage.',
       color: 'from-pink-500 to-pink-600'
+    },
+    {
+      icon: BarChart3,
+      title: 'Email Analytics',
+      description: 'Volume over time charts, hourly/weekly patterns, sender rankings, inbox growth curves, and sent/received ratios.',
+      color: 'from-indigo-500 to-indigo-600'
     }
   ]
 
@@ -565,10 +572,10 @@ function RoadmapSection() {
       items: ['Pattern detection', 'Filter suggestions', 'One-click apply']
     },
     {
-      status: 'planned',
+      status: 'completed',
       title: 'Analytics Dashboard',
-      description: 'Visualize your email patterns and organization health',
-      items: ['Email volume trends', 'Category distribution', 'Sender insights']
+      description: 'Comprehensive email analytics with interactive charts and insights',
+      items: ['Volume over time (daily/weekly/monthly)', 'Hourly & day-of-week patterns', 'Top senders & domains ranking', 'Inbox growth curves', 'Sent vs received ratios']
     },
     {
       status: 'planned',
