@@ -27,6 +27,7 @@ from gmail_organizer.scheduler import SyncScheduler
 from gmail_organizer.notifications import NotificationManager, NotificationEvent, EVENT_TYPES
 from gmail_organizer.multi_label import MultiLabelClassifier
 from gmail_organizer.training import CategoryTrainer
+from gmail_organizer.mobile import MobileLayoutHelper, generate_pwa_icons
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -70,6 +71,10 @@ if 'notification_manager' not in st.session_state:
 
 if 'category_trainer' not in st.session_state:
     st.session_state.category_trainer = CategoryTrainer()
+
+if 'mobile_helper' not in st.session_state:
+    st.session_state.mobile_helper = MobileLayoutHelper()
+    generate_pwa_icons()
 
 # Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
@@ -3488,6 +3493,74 @@ def training_tab():
                         st.rerun()
 
 
+# ==================== MOBILE COMPANION TAB ====================
+
+def mobile_tab():
+    """Mobile companion and PWA management tab."""
+    st.header("Mobile Companion")
+    st.markdown("Access Gmail Organizer as a mobile app on any device.")
+
+    mobile = st.session_state.mobile_helper
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Install as App")
+        st.markdown(mobile.get_install_instructions())
+
+    with col2:
+        st.subheader("PWA Status")
+        st.markdown("**Service Worker:** Registered")
+        st.markdown("**Offline Support:** Enabled (cached assets)")
+        st.markdown("**Push Notifications:** Available")
+        st.markdown("**Home Screen:** Installable")
+
+        st.markdown("---")
+        st.markdown("**Mobile Features:**")
+        st.markdown("- Responsive layout adapts to screen size")
+        st.markdown("- Touch-friendly controls (44px minimum targets)")
+        st.markdown("- Scrollable tab navigation")
+        st.markdown("- Standalone mode (no browser chrome)")
+        st.markdown("- Safe area insets for notched devices")
+        st.markdown("- Offline indicator when disconnected")
+
+    st.markdown("---")
+    st.subheader("Mobile Preview")
+
+    with st.expander("Layout Behavior by Device", expanded=True):
+        preview_data = {
+            "Device": ["Phone (<480px)", "Large Phone (480-768px)",
+                       "Tablet (768-1024px)", "Desktop (>1024px)"],
+            "Sidebar": ["Hidden (swipe)", "Hidden (swipe)",
+                        "Compact (240px)", "Full (300px)"],
+            "Columns": ["Stacked", "Stacked", "Side by side", "Side by side"],
+            "Tabs": ["Scrollable", "Scrollable", "Wrapped", "Full width"],
+            "Font Scale": ["70%", "80%", "90%", "100%"],
+            "Touch Targets": ["44px min", "44px min", "Standard", "Standard"],
+        }
+        st.table(pd.DataFrame(preview_data))
+
+    st.markdown("---")
+    st.subheader("Connection Status")
+    st.markdown(mobile.get_offline_status_html(), unsafe_allow_html=True)
+    st.info(
+        "The offline indicator above will appear when your device loses "
+        "internet connectivity. Cached data remains accessible offline."
+    )
+
+    st.markdown("---")
+    st.subheader("App Manifest")
+    with st.expander("View PWA Configuration"):
+        import json
+        from pathlib import Path
+        manifest_path = Path(__file__).parent / ".streamlit" / "static" / "manifest.json"
+        if manifest_path.exists():
+            manifest_data = json.loads(manifest_path.read_text())
+            st.json(manifest_data)
+        else:
+            st.warning("Manifest file not found. PWA may not be installable.")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -3501,6 +3574,11 @@ def main():
     theme_css = st.session_state.theme_manager.apply_theme_css(st.session_state.current_theme)
     if theme_css:
         st.markdown(theme_css, unsafe_allow_html=True)
+
+    # Inject PWA meta tags and mobile CSS
+    mobile = st.session_state.mobile_helper
+    st.markdown(mobile.get_pwa_html(), unsafe_allow_html=True)
+    st.markdown(mobile.get_mobile_css(), unsafe_allow_html=True)
 
     st.title("Gmail Organizer")
     st.markdown("AI-powered email management for multiple Gmail accounts")
@@ -3516,7 +3594,8 @@ def main():
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
         "Summaries", "Reputation", "Storage", "Export", "Notifications",
-        "Multi-Label", "Training", "Analyze", "Process", "Results", "Settings"
+        "Multi-Label", "Training", "Mobile", "Analyze", "Process", "Results",
+        "Settings"
     ])
 
     with tabs[0]:
@@ -3554,12 +3633,14 @@ def main():
     with tabs[16]:
         training_tab()
     with tabs[17]:
-        analyze_tab()
+        mobile_tab()
     with tabs[18]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[19]:
-        results_tab()
+        process_emails_tab()
     with tabs[20]:
+        results_tab()
+    with tabs[21]:
         settings_tab()
 
     # Auto-refresh while syncing
