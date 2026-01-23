@@ -12,6 +12,7 @@ from gmail_organizer.sync_manager import SyncManager
 from gmail_organizer.analytics import EmailAnalytics
 from gmail_organizer.filters import SmartFilterGenerator, FilterRule
 from gmail_organizer.unsubscribe import UnsubscribeManager
+from gmail_organizer.search import SearchIndex
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -1615,6 +1616,167 @@ def unsubscribe_tab():
         st.bar_chart(domain_df.set_index('Domain'))
 
 
+def search_tab():
+    """Semantic search - TF-IDF based email search with relevance ranking"""
+    st.header("Email Search")
+    st.markdown("Search your emails by meaning, not just keywords. "
+                "Uses TF-IDF relevance ranking for intelligent results.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    # Account selection
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="search_account")
+    account_name = account_options[selected_label]
+
+    emails = sync_mgr.get_emails(account_name)
+
+    # Build or retrieve index
+    index_key = f'search_index_{account_name}'
+    if index_key not in st.session_state:
+        st.session_state[index_key] = None
+
+    index = st.session_state[index_key]
+
+    # Check if index needs rebuild
+    needs_rebuild = (index is None or index.document_count != len(emails))
+
+    if needs_rebuild:
+        if st.button("Build Search Index", type="primary", key="build_index"):
+            with st.spinner(f"Building search index for {len(emails):,} emails..."):
+                new_index = SearchIndex()
+                new_index.build_index(emails)
+                st.session_state[index_key] = new_index
+                index = new_index
+                st.success(
+                    f"Index built: {index.document_count:,} documents, "
+                    f"{index.vocabulary_size:,} terms"
+                )
+        else:
+            st.info("Click 'Build Search Index' to enable search. "
+                    "This indexes all email subjects, senders, and body previews.")
+            return
+
+    # Show index stats
+    if index:
+        st.caption(
+            f"Index: {index.document_count:,} documents, "
+            f"{index.vocabulary_size:,} terms"
+        )
+
+    st.markdown("---")
+
+    # Search interface
+    query = st.text_input(
+        "Search query",
+        placeholder="e.g., 'meeting schedule tomorrow', 'invoice payment', 'job application status'",
+        key="search_query"
+    )
+
+    # Advanced filters (collapsible)
+    with st.expander("Advanced Filters", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            sender_filter = st.text_input(
+                "Sender contains",
+                placeholder="e.g., 'amazon' or 'john@'",
+                key="search_sender"
+            )
+            date_from = st.date_input("From date", value=None, key="search_date_from")
+        with col2:
+            # Get categories from emails
+            categories = sorted(set(
+                e.get('category', '') for e in emails if e.get('category')
+            ))
+            category_options = ["All"] + categories
+            category_filter = st.selectbox("Category", category_options,
+                                           key="search_category")
+            date_to = st.date_input("To date", value=None, key="search_date_to")
+
+        max_results = st.slider("Max results", 10, 200, 50, key="search_max")
+
+    # Execute search
+    if query and index:
+        cat_filter = category_filter if category_filter != "All" else ""
+        date_from_str = date_from.isoformat() if date_from else ""
+        date_to_str = date_to.isoformat() if date_to else ""
+
+        results = index.search(
+            query,
+            limit=max_results,
+            sender_filter=sender_filter,
+            category_filter=cat_filter,
+            date_from=date_from_str,
+            date_to=date_to_str
+        )
+
+        if results:
+            st.success(f"Found {len(results)} relevant emails")
+
+            # Results table
+            for rank, (email, score) in enumerate(results, 1):
+                relevance_pct = min(score * 100, 100)
+                sender = email.get('sender', 'Unknown')[:50]
+                subject = email.get('subject', '(no subject)')
+                date = email.get('date', '')[:16]
+                category = email.get('category', '')
+
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    with st.expander(
+                        f"#{rank} — {subject[:70]}",
+                        expanded=(rank <= 3)
+                    ):
+                        st.markdown(f"**From:** {sender}")
+                        st.markdown(f"**Subject:** {subject}")
+                        st.markdown(f"**Date:** {date}")
+                        if category:
+                            st.markdown(f"**Category:** {category}")
+
+                        body = email.get('body_preview', '')
+                        if body:
+                            st.markdown("**Preview:**")
+                            st.text(body[:300])
+
+                        # Find similar button
+                        if st.button("Find Similar", key=f"similar_{rank}"):
+                            similar = index.find_similar(email, limit=5)
+                            if similar:
+                                st.markdown("**Similar emails:**")
+                                for sim_email, sim_score in similar:
+                                    st.caption(
+                                        f"  [{sim_score:.0%}] "
+                                        f"{sim_email.get('subject', '')[:60]} "
+                                        f"— {sim_email.get('sender', '')[:30]}"
+                                    )
+                            else:
+                                st.caption("No similar emails found.")
+                with col2:
+                    st.metric("Score", f"{relevance_pct:.0f}%")
+        else:
+            st.info("No results found. Try different search terms or broader filters.")
+
+    elif query and not index:
+        st.warning("Search index not built yet. Click 'Build Search Index' above.")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -1634,8 +1796,8 @@ def main():
     render_sidebar()
 
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-        "Dashboard", "Analytics", "Smart Filters", "Unsubscribe",
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+        "Dashboard", "Analytics", "Search", "Smart Filters", "Unsubscribe",
         "Analyze", "Process", "Results", "Settings"
     ])
 
@@ -1644,16 +1806,18 @@ def main():
     with tab2:
         analytics_tab()
     with tab3:
-        filters_tab()
+        search_tab()
     with tab4:
-        unsubscribe_tab()
+        filters_tab()
     with tab5:
-        analyze_tab()
+        unsubscribe_tab()
     with tab6:
-        process_emails_tab()
+        analyze_tab()
     with tab7:
-        results_tab()
+        process_emails_tab()
     with tab8:
+        results_tab()
+    with tab9:
         settings_tab()
 
     # Auto-refresh while syncing

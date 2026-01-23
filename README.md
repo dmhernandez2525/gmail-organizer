@@ -115,7 +115,18 @@ Benefits:
 - **Rate Limit Handling**: Exponential backoff with smart retries
 - **Disk Fallback**: Loads email data from disk if not in memory
 
-### 6. Unsubscribe Manager
+### 6. Semantic Search
+
+Search emails by meaning using TF-IDF relevance ranking:
+
+- **TF-IDF Index**: Builds a search index from subjects, senders, and body previews
+- **Relevance Ranking**: Results ranked by cosine similarity with score display
+- **Subject Boosting**: Exact matches in subject lines are prioritized
+- **Advanced Filters**: Filter by sender, category, date range
+- **Find Similar**: Discover emails similar to a selected result
+- **Zero Dependencies**: Pure Python implementation, no ML libraries required
+
+### 7. Unsubscribe Manager
 
 Detect and manage newsletter/marketing subscriptions:
 
@@ -268,6 +279,7 @@ gmail-organizer/
 │   ├── claude_integration.py # Claude Code CLI integration
 │   ├── filters.py            # Smart filter pattern detection & creation
 │   ├── unsubscribe.py        # Subscription detection & unsubscribe management
+│   ├── search.py             # TF-IDF semantic search engine
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
