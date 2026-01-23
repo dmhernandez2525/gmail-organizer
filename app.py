@@ -25,6 +25,7 @@ from gmail_organizer.export import EmailExporter
 from gmail_organizer.themes import ThemeManager
 from gmail_organizer.scheduler import SyncScheduler
 from gmail_organizer.notifications import NotificationManager, NotificationEvent, EVENT_TYPES
+from gmail_organizer.multi_label import MultiLabelClassifier
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -3211,6 +3212,121 @@ def notifications_tab():
             st.success("Test notification sent! Check History tab and your webhook endpoints.")
 
 
+def multi_label_tab():
+    """Multi-label classification - assign multiple categories per email"""
+    st.header("Multi-Label Classification")
+    st.markdown("Classify emails with multiple labels using rule-based pattern matching.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": n for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="ml_account")
+    account_name = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        threshold = st.slider("Confidence threshold", 0.1, 0.9, 0.3, 0.05, key="ml_threshold")
+    with col2:
+        max_emails = st.number_input("Max emails to classify", 100, len(emails), min(1000, len(emails)),
+                                     key="ml_max")
+
+    classifier = MultiLabelClassifier(confidence_threshold=threshold)
+
+    st.markdown("---")
+
+    classify_view, rules_view = st.tabs(["Classify", "Rules"])
+
+    with classify_view:
+        if st.button("Run Classification", type="primary", key="ml_classify"):
+            with st.spinner(f"Classifying {min(max_emails, len(emails)):,} emails..."):
+                subset = emails[:max_emails]
+                results = classifier.classify_batch(subset)
+                st.session_state[f'ml_results_{account_name}'] = results
+
+        results_key = f'ml_results_{account_name}'
+        if results_key in st.session_state:
+            results = st.session_state[results_key]
+            stats = classifier.get_label_stats(results)
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Emails Classified", stats['total_emails'])
+            with col2:
+                st.metric("Multi-Label", f"{stats['multi_label_pct']}%")
+            with col3:
+                st.metric("Avg Labels/Email", stats['avg_labels_per_email'])
+            with col4:
+                st.metric("Unique Labels", stats['unique_labels'])
+
+            st.markdown("---")
+
+            if stats['label_counts']:
+                st.subheader("Label Distribution")
+                label_df = pd.DataFrame(
+                    list(stats['label_counts'].items()),
+                    columns=["Label", "Count"]
+                )
+                st.bar_chart(label_df.set_index("Label"))
+
+            st.markdown("---")
+
+            # Filter results
+            label_filter = st.selectbox(
+                "Filter by label",
+                ["All"] + list(stats['label_counts'].keys()),
+                key="ml_label_filter"
+            )
+
+            filtered_results = results
+            if label_filter != "All":
+                filtered_results = [r for r in results if label_filter in r.all_labels]
+
+            st.subheader(f"Results ({len(filtered_results)})")
+
+            for i, result in enumerate(filtered_results[:50]):
+                email = emails[i] if i < len(emails) else {}
+                subject = email.get('subject', '(no subject)')[:50]
+                labels_str = ", ".join(
+                    f"{la.label} ({la.confidence:.0%})" for la in result.labels[:3]
+                )
+
+                with st.expander(f"[{result.primary_label}] {subject}"):
+                    st.markdown(f"**From:** {email.get('sender', email.get('from', ''))[:50]}")
+                    st.markdown(f"**Labels:** {labels_str}")
+                    for la in result.labels:
+                        st.markdown(f"- **{la.label}** ({la.confidence:.0%}): {', '.join(la.matched_rules[:2])}")
+
+    with rules_view:
+        st.subheader("Classification Rules")
+        st.markdown("These rules determine how emails are categorized.")
+
+        available_labels = classifier.get_available_labels()
+        for label in sorted(available_labels):
+            rules_for_label = [r for r in classifier.rules if r.label == label]
+            for rule in rules_for_label:
+                with st.expander(f"**{rule.label}** (weight: {rule.weight}) - {rule.description}"):
+                    if rule.sender_patterns:
+                        st.markdown(f"**Sender patterns:** `{'`, `'.join(rule.sender_patterns)}`")
+                    if rule.subject_patterns:
+                        st.markdown(f"**Subject patterns:** `{'`, `'.join(rule.subject_patterns)}`")
+                    if rule.body_patterns:
+                        st.markdown(f"**Body patterns:** `{'`, `'.join(rule.body_patterns)}`")
+                    if rule.domain_patterns:
+                        st.markdown(f"**Domain patterns:** `{'`, `'.join(rule.domain_patterns)}`")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -3239,7 +3355,7 @@ def main():
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
         "Summaries", "Reputation", "Storage", "Export", "Notifications",
-        "Analyze", "Process", "Results", "Settings"
+        "Multi-Label", "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -3273,12 +3389,14 @@ def main():
     with tabs[14]:
         notifications_tab()
     with tabs[15]:
-        analyze_tab()
+        multi_label_tab()
     with tabs[16]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[17]:
-        results_tab()
+        process_emails_tab()
     with tabs[18]:
+        results_tab()
+    with tabs[19]:
         settings_tab()
 
     # Auto-refresh while syncing
