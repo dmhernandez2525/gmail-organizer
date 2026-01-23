@@ -16,6 +16,7 @@ from gmail_organizer.search import SearchIndex
 from gmail_organizer.bulk_actions import BulkActionEngine, filter_emails
 from gmail_organizer.priority import PriorityScorer
 from gmail_organizer.duplicates import DuplicateDetector
+from gmail_organizer.security import EmailSecurityScanner
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2327,6 +2328,81 @@ def duplicates_tab():
                                     )
 
 
+def security_tab():
+    """Security scanner - detect phishing and spam"""
+    st.header("Security Scanner")
+    st.markdown("Scan emails for phishing attempts, suspicious links, spoofing, and spam indicators.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": n for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="sec_account")
+    account_name = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    scanner = EmailSecurityScanner()
+    st.markdown("---")
+
+    if st.button("Scan for Threats", type="primary", key="sec_scan"):
+        with st.spinner("Scanning emails for security threats..."):
+            alerts = scanner.scan_emails(emails)
+            st.session_state[f'security_alerts_{account_name}'] = alerts
+
+    alerts_key = f'security_alerts_{account_name}'
+    if alerts_key not in st.session_state:
+        st.info("Click 'Scan for Threats' to analyze your emails.")
+        return
+
+    alerts = st.session_state[alerts_key]
+
+    if not alerts:
+        st.success("No security threats detected!")
+        return
+
+    stats = scanner.get_scan_stats(alerts)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("High Risk", stats['high_risk'])
+    with col2:
+        st.metric("Medium Risk", stats['medium_risk'])
+    with col3:
+        st.metric("Phishing", stats['phishing'])
+    with col4:
+        st.metric("Suspicious Links", stats['suspicious_link'])
+
+    st.markdown("---")
+
+    level_filter = st.radio("Filter", ["All", "High", "Medium", "Low"],
+                            horizontal=True, key="sec_filter")
+
+    filtered = alerts
+    if level_filter != "All":
+        filtered = [a for a in alerts if a.risk_level == level_filter.lower()]
+
+    for i, alert in enumerate(filtered[:50]):
+        icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}[alert.risk_level]
+        subject = alert.email.get('subject', '(no subject)')[:60]
+
+        with st.expander(f"{icon} [{alert.risk_score:.0%}] {subject}", expanded=(i < 3)):
+            st.markdown(f"**From:** {alert.email.get('sender', '')[:60]}")
+            st.markdown(f"**Category:** {alert.category}")
+            st.markdown(f"**Risk Score:** {alert.risk_score:.0%}")
+            st.markdown("**Findings:**")
+            for finding in alert.findings:
+                st.markdown(f"- {finding}")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2348,8 +2424,8 @@ def main():
     # Main tabs
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
-        "Unsubscribe", "Bulk Actions", "Cleanup", "Analyze", "Process",
-        "Results", "Settings"
+        "Unsubscribe", "Bulk Actions", "Cleanup", "Security",
+        "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -2369,12 +2445,14 @@ def main():
     with tabs[7]:
         duplicates_tab()
     with tabs[8]:
-        analyze_tab()
+        security_tab()
     with tabs[9]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[10]:
-        results_tab()
+        process_emails_tab()
     with tabs[11]:
+        results_tab()
+    with tabs[12]:
         settings_tab()
 
     # Auto-refresh while syncing
