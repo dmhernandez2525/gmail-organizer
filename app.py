@@ -21,6 +21,7 @@ from gmail_organizer.reminders import FollowUpDetector
 from gmail_organizer.summaries import EmailSummarizer
 from gmail_organizer.reputation import SenderReputation
 from gmail_organizer.storage import StorageAnalyzer
+from gmail_organizer.export import EmailExporter
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2870,6 +2871,117 @@ def storage_tab():
             st.markdown(f"{i}. {suggestion}")
 
 
+def export_tab():
+    """Export/Backup - export email data in various formats"""
+    st.header("Export & Backup")
+    st.markdown("Export your email data in CSV, JSON, or MBOX format for backup or analysis.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": n for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="export_account")
+    account_name = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    exporter = EmailExporter()
+
+    st.markdown("---")
+
+    # Filter options
+    st.subheader("Filter (optional)")
+    col1, col2 = st.columns(2)
+    with col1:
+        filter_category = st.text_input("Category filter", key="export_category",
+                                        placeholder="e.g., work, personal")
+        filter_sender = st.text_input("Sender filter", key="export_sender",
+                                      placeholder="e.g., @example.com")
+    with col2:
+        filter_date_from = st.date_input("From date", value=None, key="export_from")
+        filter_date_to = st.date_input("To date", value=None, key="export_to")
+
+    # Apply filters
+    filtered = exporter.filter_emails(
+        emails,
+        category=filter_category or None,
+        sender=filter_sender or None,
+        date_from=filter_date_from.strftime("%Y-%m-%d") if filter_date_from else None,
+        date_to=filter_date_to.strftime("%Y-%m-%d") if filter_date_to else None,
+    )
+
+    st.info(f"**{len(filtered):,}** emails selected for export (out of {len(emails):,} total)")
+
+    st.markdown("---")
+
+    # Export format selection
+    st.subheader("Export Format")
+    format_choice = st.radio(
+        "Format", ["CSV", "JSON", "MBOX"],
+        horizontal=True, key="export_format",
+        help="CSV: Spreadsheet-compatible. JSON: Full data with metadata. MBOX: Standard email archive format."
+    )
+
+    # Size estimate
+    try:
+        estimate = exporter.get_export_size_estimate(filtered, format_choice.lower())
+        estimate_mb = estimate / (1024 * 1024)
+        st.caption(f"Estimated file size: {estimate_mb:.1f} MB")
+    except Exception:
+        pass
+
+    # Export button
+    filename_base = f"{account_name}_{len(filtered)}_emails"
+
+    if st.button("Export", type="primary", key="export_btn"):
+        if not filtered:
+            st.warning("No emails to export. Adjust your filters.")
+            return
+
+        with st.spinner(f"Exporting {len(filtered):,} emails as {format_choice}..."):
+            try:
+                if format_choice == "CSV":
+                    filepath = exporter.export_csv(filtered, f"{filename_base}.csv")
+                elif format_choice == "JSON":
+                    filepath = exporter.export_json(filtered, f"{filename_base}.json")
+                else:
+                    filepath = exporter.export_mbox(filtered, f"{filename_base}.mbox")
+
+                st.success(f"Exported to: `{filepath}`")
+                st.session_state[f'last_export_{account_name}'] = filepath
+
+                # Show summary
+                summary = exporter.export_summary(filtered)
+                st.markdown("---")
+                st.subheader("Export Summary")
+                sum_col1, sum_col2, sum_col3 = st.columns(3)
+                with sum_col1:
+                    st.metric("Emails Exported", summary['total_emails'])
+                with sum_col2:
+                    if summary['date_range']['earliest']:
+                        st.metric("Date Range",
+                                  f"{summary['date_range']['earliest'][:10]} to {summary['date_range']['latest'][:10]}")
+                with sum_col3:
+                    st.metric("Avg Subject Length", f"{summary['avg_subject_length']:.0f} chars")
+
+                if summary['categories']:
+                    st.markdown("**Categories:**")
+                    for cat, count in list(summary['categories'].items())[:5]:
+                        st.markdown(f"- {cat}: {count}")
+
+            except Exception as e:
+                st.error(f"Export failed: {e}")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2892,8 +3004,8 @@ def main():
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
-        "Summaries", "Reputation", "Storage", "Analyze", "Process", "Results",
-        "Settings"
+        "Summaries", "Reputation", "Storage", "Export", "Analyze", "Process",
+        "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -2923,12 +3035,14 @@ def main():
     with tabs[12]:
         storage_tab()
     with tabs[13]:
-        analyze_tab()
+        export_tab()
     with tabs[14]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[15]:
-        results_tab()
+        process_emails_tab()
     with tabs[16]:
+        results_tab()
+    with tabs[17]:
         settings_tab()
 
     # Auto-refresh while syncing
