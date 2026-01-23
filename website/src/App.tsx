@@ -27,7 +27,8 @@ import {
   Search,
   ListChecks,
   AlertTriangle,
-  Copy
+  Copy,
+  ShieldAlert
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -330,6 +331,12 @@ function FeaturesSection() {
       title: 'Semantic Search',
       description: 'Search emails by meaning using TF-IDF relevance ranking. Find similar emails, filter by date/sender/category, with zero ML dependencies.',
       color: 'from-teal-500 to-teal-600'
+    },
+    {
+      icon: ShieldAlert,
+      title: 'Security Scanner',
+      description: 'Detect phishing attempts, suspicious links, sender spoofing, and spam. Analyzes URLs, authentication headers, and urgency manipulation tactics.',
+      color: 'from-red-600 to-red-700'
     },
     {
       icon: Copy,

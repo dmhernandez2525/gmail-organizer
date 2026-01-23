@@ -305,6 +305,7 @@ gmail-organizer/
 │   ├── bulk_actions.py       # Batch Gmail operations engine
 │   ├── priority.py           # Priority inbox scoring engine
 │   ├── duplicates.py         # Duplicate detection & thread cleanup
+│   ├── security.py           # Phishing/spam/spoofing detection
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
