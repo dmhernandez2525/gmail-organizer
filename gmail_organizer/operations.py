@@ -24,33 +24,78 @@ class GmailOperations:
         self.sync_state_dir.mkdir(exist_ok=True)
 
     def _get_checkpoint_path(self, query: str) -> Path:
-        """Get checkpoint file path for a specific query"""
-        # Sanitize query for filename
+        """Get checkpoint directory path for a specific query"""
         safe_query = query.replace(':', '_').replace(' ', '_').replace('/', '_') if query else 'all'
         safe_email = self.account_email.replace('@', '_at_').replace('.', '_')
-        return self.checkpoint_dir / f"checkpoint_{safe_email}_{safe_query}.json"
+        checkpoint_subdir = self.checkpoint_dir / f"{safe_email}_{safe_query}"
+        checkpoint_subdir.mkdir(exist_ok=True)
+        return checkpoint_subdir
 
     def _load_checkpoint(self, checkpoint_path: Path) -> Dict:
-        """Load existing checkpoint if it exists"""
-        if checkpoint_path.exists():
+        """Load existing checkpoint from directory-based storage"""
+        from gmail_organizer.logger import logger
+
+        emails = []
+        fetched_ids = set()
+
+        if not checkpoint_path.exists():
+            return {"emails": emails, "fetched_ids": fetched_ids}
+
+        # Load index file (tracks fetched IDs)
+        index_file = checkpoint_path / "index.json"
+        if index_file.exists():
             try:
-                with open(checkpoint_path, 'r') as f:
-                    return json.load(f)
+                with open(index_file, 'r') as f:
+                    fetched_ids = set(json.load(f))
             except Exception as e:
-                from gmail_organizer.logger import logger
-                logger.warning(f"Could not load checkpoint: {e}")
-        return {"emails": [], "fetched_ids": set()}
+                logger.warning(f"Could not load checkpoint index: {e}")
+
+        # Load email data from batch files
+        batch_files = sorted(checkpoint_path.glob("batch_*.jsonl"))
+        for batch_file in batch_files:
+            try:
+                with open(batch_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            emails.append(json.loads(line))
+            except Exception as e:
+                logger.warning(f"Could not load batch file {batch_file}: {e}")
+
+        if emails:
+            logger.info(f"📂 Loaded checkpoint: {len(emails)} emails already fetched")
+
+        return {"emails": emails, "fetched_ids": fetched_ids}
 
     def _save_checkpoint(self, checkpoint_path: Path, emails: List[Dict], fetched_ids: set):
-        """Save current progress to checkpoint"""
+        """Save progress using append-only batch files (efficient for large datasets)"""
+        from gmail_organizer.logger import logger
+
         try:
-            with open(checkpoint_path, 'w') as f:
-                json.dump({
-                    "emails": emails,
-                    "fetched_ids": list(fetched_ids)
-                }, f)
+            checkpoint_path.mkdir(exist_ok=True)
+
+            # Save index (fetched IDs) - small file, fast to write
+            index_file = checkpoint_path / "index.json"
+            with open(index_file, 'w') as f:
+                json.dump(list(fetched_ids), f)
+
+            # Determine which emails haven't been written to batch files yet
+            existing_count = 0
+            batch_files = sorted(checkpoint_path.glob("batch_*.jsonl"))
+            for bf in batch_files:
+                with open(bf, 'r') as f:
+                    existing_count += sum(1 for line in f if line.strip())
+
+            # Append new emails to a new batch file
+            new_emails = emails[existing_count:]
+            if new_emails:
+                batch_num = len(batch_files)
+                batch_file = checkpoint_path / f"batch_{batch_num:04d}.jsonl"
+                with open(batch_file, 'w') as f:
+                    for email in new_emails:
+                        f.write(json.dumps(email) + '\n')
+
         except Exception as e:
-            from gmail_organizer.logger import logger
             logger.warning(f"Could not save checkpoint: {e}")
 
     # ==================== SYNC STATE MANAGEMENT ====================
@@ -396,8 +441,6 @@ class GmailOperations:
             if remaining_to_fetch == 0:
                 logger.info(f"✓ All {total_to_fetch} emails already fetched from checkpoint!")
                 print(f"✓ All emails already fetched!")
-                if checkpoint_path.exists():
-                    checkpoint_path.unlink()  # Clean up checkpoint
                 return emails
 
             logger.info(f"Fetching details for {remaining_to_fetch} emails ({len(emails)} already cached)...")
@@ -410,21 +453,16 @@ class GmailOperations:
             # Google recommends batches under 50 for reliability
             # Gmail API limit: 15,000 quota units/min, messages.get = 5 units
             # Max: 3,000 messages/min = 60 batches of 50/min = 1 batch every second
-            # Using conservative delays due to quota recovery issues
+            # Using 2s delay = 30 batches/min = 1,500 emails/min (safe margin)
             batch_size = 50  # Google recommends < 50 for reliability
-            retry_delay = 10.0  # Conservative: 6 batches/min (well under limit)
+            batch_delay = 2.0  # 30 batches/min, well within 60 batch/min limit
+            checkpoint_interval = 500  # Save checkpoint every N emails
 
             for batch_start in range(0, len(message_ids), batch_size):
                 batch_end = min(batch_start + batch_size, len(message_ids))
                 batch_ids = message_ids[batch_start:batch_end]
 
-                # First batch: wait for quota to recover from previous runs
-                if batch_start == 0:
-                    logger.info("Starting batch fetching, waiting 120s for full quota recovery...")
-                    print("⏱️  Waiting 2 minutes for Gmail API quota to fully recover...")
-                    time.sleep(120)
-
-                # Fetch with retry logic - now handles partial failures!
+                # Fetch with retry logic - handles partial failures!
                 max_retries = 5
                 ids_to_fetch = batch_ids.copy()
 
@@ -440,43 +478,43 @@ class GmailOperations:
                         emails.extend(batch_emails)
                         for email in batch_emails:
                             fetched_ids.add(email['email_id'])
-                        self._save_checkpoint(checkpoint_path, emails, fetched_ids)
-                        logger.info(f"Saved {len(batch_emails)} emails from batch {batch_start}-{batch_end}")
 
                     # Only retry the failed IDs, not the entire batch!
                     if failed_ids_batch:
                         ids_to_fetch = failed_ids_batch
                         if retry < max_retries - 1:
-                            wait_time = retry_delay * (3 ** retry)
+                            # Backoff: 10s, 30s, 60s, 60s (capped)
+                            wait_time = min(10.0 * (3 ** retry), 60.0)
                             logger.warning(f"Rate limit hit for {len(failed_ids_batch)} emails in batch")
                             logger.warning(f"Rate limit hit (retry {retry + 1}/{max_retries}), waiting {wait_time:.1f}s...")
                             time.sleep(wait_time)
                         else:
-                            logger.error(f"Max retries reached for batch {batch_start}-{batch_end}, skipping...")
-                            self._save_checkpoint(checkpoint_path, emails, fetched_ids)
+                            logger.error(f"Max retries reached for batch {batch_start}-{batch_end}, skipping {len(ids_to_fetch)} emails")
                     else:
                         break  # All succeeded
 
-                # Progress updates
+                # Save checkpoint periodically (not every batch - too expensive for large sets)
                 fetched_count = len(emails)
+                if fetched_count % checkpoint_interval < batch_size:
+                    self._save_checkpoint(checkpoint_path, emails, fetched_ids)
+                    logger.info(f"  Checkpoint saved: {fetched_count}/{total_to_fetch} emails")
+
+                # Progress updates
                 if fetched_count % 500 == 0 or fetched_count == total_to_fetch:
                     logger.info(f"  Fetched {fetched_count}/{total_to_fetch} email details...")
-                    print(f"  Fetched {fetched_count}/{total_to_fetch} emails...")
 
                 # Update UI progress every batch
                 if progress_callback:
                     progress_callback(fetched_count, total_to_fetch, f"Fetched {fetched_count:,}/{total_to_fetch:,} emails")
 
                 # Rate limiting between batches
-                time.sleep(retry_delay)
+                time.sleep(batch_delay)
+
+            # Final checkpoint save
+            self._save_checkpoint(checkpoint_path, emails, fetched_ids)
 
             logger.info(f"Successfully fetched {len(emails)} total emails")
             print(f"✓ Fetch complete: {len(emails):,} total emails")
-
-            # Clean up checkpoint file on successful completion
-            if checkpoint_path.exists():
-                checkpoint_path.unlink()
-                logger.info("Cleaned up checkpoint file")
 
             if progress_callback:
                 progress_callback(len(emails), total_to_fetch, f"✓ Fetched {len(emails):,} emails!")
@@ -526,14 +564,18 @@ class GmailOperations:
 
                 subject = self._get_header(headers, 'Subject')
                 sender = self._get_header(headers, 'From')
+                to = self._get_header(headers, 'To')
                 date = self._get_header(headers, 'Date')
+                body_preview = self._get_body_preview(response['payload'])
 
                 emails.append({
                     'email_id': response['id'],
                     'subject': subject,
                     'sender': sender,
+                    'to': to,
                     'date': date,
-                    'body_preview': "",  # Not needed for classification
+                    'snippet': response.get('snippet', ''),
+                    'body_preview': body_preview,
                     'labels': response.get('labelIds', [])
                 })
             except Exception as e:
@@ -549,8 +591,7 @@ class GmailOperations:
                 self.service.users().messages().get(
                     userId='me',
                     id=email_id,
-                    format='metadata',
-                    metadataHeaders=['Subject', 'From', 'To', 'Date']
+                    format='full'
                 ),
                 callback=callback,
                 request_id=request_id
@@ -565,39 +606,35 @@ class GmailOperations:
 
         return emails, failed_ids
 
-    def _get_email_details(self, email_id: str, metadata_only: bool = True) -> Optional[Dict]:
+    def _get_email_details(self, email_id: str) -> Optional[Dict]:
         """
-        Get email information
+        Get full email information including body content.
 
         Args:
             email_id: Gmail message ID
-            metadata_only: If True, only fetch headers (MUCH faster, no body)
         """
         try:
-            # Use 'metadata' format for just headers (10x faster than 'full')
-            # Only fetch subject, from, to, date headers
             message = self.service.users().messages().get(
                 userId='me',
                 id=email_id,
-                format='metadata',
-                metadataHeaders=['Subject', 'From', 'To', 'Date']
+                format='full'
             ).execute()
 
             headers = message['payload'].get('headers', [])
 
-            # Extract key information
             subject = self._get_header(headers, 'Subject')
             sender = self._get_header(headers, 'From')
+            to = self._get_header(headers, 'To')
             date = self._get_header(headers, 'Date')
-
-            # No body needed for classification - saves tons of time
-            body_preview = ""
+            body_preview = self._get_body_preview(message['payload'])
 
             return {
                 'email_id': email_id,
                 'subject': subject,
                 'sender': sender,
+                'to': to,
                 'date': date,
+                'snippet': message.get('snippet', ''),
                 'body_preview': body_preview,
                 'labels': message.get('labelIds', [])
             }
@@ -613,23 +650,39 @@ class GmailOperations:
                 return header['value']
         return ""
 
-    def _get_body_preview(self, payload: Dict, max_length=500) -> str:
-        """Extract email body preview"""
+    def _get_body_preview(self, payload: Dict, max_length=2000) -> str:
+        """Extract email body text content"""
         body = ""
 
-        # Try to get plain text body
-        if 'parts' in payload:
-            for part in payload['parts']:
-                if part['mimeType'] == 'text/plain':
-                    if 'data' in part['body']:
-                        body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors='ignore')
-                        break
-        elif 'body' in payload and 'data' in payload['body']:
-            body = base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors='ignore')
+        # Try to get plain text body (recursively check parts)
+        body = self._extract_text_from_payload(payload)
 
         # Clean and truncate
-        body = body.replace('\n', ' ').replace('\r', ' ').strip()
+        body = body.replace('\r', '').strip()
         return body[:max_length]
+
+    def _extract_text_from_payload(self, payload: Dict) -> str:
+        """Recursively extract text/plain content from email payload"""
+        # Direct body data
+        if payload.get('mimeType') == 'text/plain' and 'data' in payload.get('body', {}):
+            return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors='ignore')
+
+        # Check parts recursively
+        if 'parts' in payload:
+            for part in payload['parts']:
+                if part.get('mimeType') == 'text/plain' and 'data' in part.get('body', {}):
+                    return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors='ignore')
+                # Recurse into multipart
+                if 'parts' in part:
+                    result = self._extract_text_from_payload(part)
+                    if result:
+                        return result
+
+        # Fallback: try body directly
+        if 'body' in payload and 'data' in payload.get('body', {}):
+            return base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors='ignore')
+
+        return ""
 
     def get_or_create_label(self, label_name: str, color: str = None) -> str:
         """

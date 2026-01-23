@@ -36,11 +36,20 @@ Gmail Organizer uses AI to automatically:
 
 ## ✨ Features
 
-### 1. AI-Powered Analysis
+### 1. Parallel Multi-Account Syncing
+- **All accounts sync simultaneously** via background threads
+- Non-blocking UI: switch tabs/accounts without stopping syncs
+- Real-time progress bars and status badges per account
+- Gmail API rate limits are per-user, so parallel syncs don't interfere
+- Incremental sync after first full fetch (seconds instead of hours)
+- Data persisted to disk and **never deleted**
+
+### 2. AI-Powered Analysis
 - Scans your entire inbox (inbox, sent, archives)
 - Discovers patterns in your email usage
 - Suggests categories based on YOUR actual emails
 - Prioritizes job search emails if configured
+- Uses already-synced data (no re-fetching)
 
 ### 2. Two Classification Methods
 
@@ -93,15 +102,18 @@ Benefits:
 - 📊 **Resumable**: Checkpoints save progress during full sync
 
 ### 5. Powerful Features
+- **Parallel Multi-Account Sync**: All accounts sync simultaneously via daemon threads
+- **Non-Blocking UI**: Switch tabs/accounts freely while syncs run in background
+- **Data Never Deleted**: `.sync-state/` and `.email-cache/` persist across restarts
 - **Pagination Support**: Process unlimited emails (Gmail API handles 500/batch)
 - **Batch API**: Fetches 50 emails per HTTP request (50x faster)
 - **Partial Batch Recovery**: Saves successful emails even when some fail
-- **Auto-Restart**: App automatically recovers from crashes
 - **Comprehensive Logging**: All actions logged to `logs/` folder
 - **Email Count Accuracy**: Uses Gmail Profile API for exact totals
-- **Progress Tracking**: Real-time progress bars and status updates
+- **Progress Tracking**: Real-time progress bars and status badges per account
 - **Checkpoint System**: Resumes from where it left off after interruption
 - **Rate Limit Handling**: Exponential backoff with smart retries
+- **Disk Fallback**: Loads email data from disk if not in memory
 
 ## 🚀 Getting Started
 
@@ -176,40 +188,41 @@ gmail-organizer
 ### First-Time Setup
 
 1. **Add Gmail Account**
-   - Click "➕ Add Gmail Account" in sidebar
+   - Click "Add Gmail Account" in sidebar
    - Name your account (e.g., "personal", "work")
    - Browser opens for Google OAuth
    - Grant permissions
    - Account saved for future use
 
-2. **Analyze Inbox** (Optional but Recommended)
-   - Go to "🔍 Analyze First" tab
-   - Select account
-   - Choose "All Mail" to scan everything
-   - Set email count (or use "All")
-   - Click "🔍 Analyze Inbox"
+2. **Sync Emails** (Dashboard tab)
+   - Click "Sync All Accounts" to sync all at once
+   - Or click individual sync buttons per account
+   - Syncs run in background threads - switch tabs freely
+   - Progress bars and status badges update in real-time
+   - Data persists to disk and loads automatically on restart
+
+3. **Analyze Inbox** (Analyze tab)
+   - Uses already-synced data (no re-fetching)
+   - Select account and configure analysis options
+   - Click "Analyze Patterns"
    - Review AI-suggested categories
 
-3. **Process Emails**
+4. **Process Emails** (Process tab)
 
    **If using Claude Code CLI:**
-   - Go to "📥 Process Emails" tab
-   - Select account and email count
-   - Click "📤 Step 1: Export & Launch Claude Code"
+   - Select account (uses synced data)
+   - Click "Step 1: Export & Launch Claude Code"
    - Terminal opens automatically
-   - Wait for "Classification complete!" message
-   - Return to app, click "✅ Step 2: Apply Results"
+   - Wait for completion, click "Step 2: Apply Results"
 
    **If using Anthropic API:**
    - Go to Settings, uncheck "Use Claude Code"
-   - Go to "📥 Process Emails" tab
-   - Click "🚀 Start Processing"
-   - Watch progress bar
+   - Select account, click "Start Processing"
 
-4. **Check Results**
-   - Go to "📊 Results" tab
-   - View category breakdown
-   - See classified emails
+5. **Check Results** (Results tab)
+   - Multi-account results with search/filter
+   - Category breakdown charts
+   - View classified emails
 
 ## 📁 Project Structure
 
@@ -219,6 +232,7 @@ gmail-organizer/
 │   ├── __init__.py           # Package exports
 │   ├── auth.py               # Multi-account OAuth manager
 │   ├── operations.py         # Gmail API operations + incremental sync
+│   ├── sync_manager.py       # Thread-safe parallel sync manager
 │   ├── classifier.py         # AI classification with Anthropic
 │   ├── analyzer.py           # Inbox pattern analysis
 │   ├── claude_integration.py # Claude Code CLI integration
@@ -300,12 +314,14 @@ CATEGORIES = {
 
 ## 🔒 Privacy & Security
 
-- **No data storage**: Emails never stored on external servers
-- **Local processing**: All classification happens locally or via Anthropic API
-- **OAuth tokens**: Stored encrypted in `credentials/` folder
+- **Local only**: Email data stored locally in `.sync-state/` and `.email-cache/` (git-ignored)
+- **No external storage**: Emails never sent to external servers (except Anthropic API for classification)
+- **Local processing**: All syncing and analysis happens locally
+- **OAuth tokens**: Stored in `credentials/` folder (git-ignored)
 - **API keys**: Never committed to git (via .gitignore)
-- **Email exports**: Temporary files in `.claude-processing/` (git-ignored)
+- **Email exports**: Files in `.claude-processing/` (git-ignored)
 - **Logs**: Contain no email content, only metadata and counts
+- **Data persistence**: Synced email data is never deleted from disk
 
 ## 📊 Performance
 
@@ -379,6 +395,10 @@ The email processing runs locally on your machine for privacy. Clone the repo an
 - [x] **Incremental Sync** - Gmail History API integration
 - [x] **Checkpoint System** - Resumable batch processing
 - [x] **Multi-Account Support** - Manage 5+ Gmail accounts
+- [x] **Parallel Syncing** - All accounts sync simultaneously via background threads
+- [x] **Non-Blocking UI** - Switch tabs/accounts without stopping syncs
+- [x] **Data Persistence** - Email data never deleted, loads from disk on restart
+- [x] **5-Tab Dashboard UI** - Dashboard, Analyze, Process, Results, Settings
 - [ ] **Smart Filters** - Automatic filter rule generation
 - [ ] **Analytics Dashboard** - Email insights and trends
 - [ ] **Mobile Companion** - iOS/Android notification app
