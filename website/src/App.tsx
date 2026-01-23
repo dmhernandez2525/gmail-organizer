@@ -20,7 +20,15 @@ import {
   Rocket,
   Target,
   Menu,
-  X
+  X,
+  BarChart3,
+  Filter,
+  MailMinus,
+  Search,
+  ListChecks,
+  AlertTriangle,
+  Copy,
+  ShieldAlert
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -305,6 +313,54 @@ function FeaturesSection() {
       title: 'Privacy First',
       description: 'All processing happens locally on your machine. Email content only sent to AI for classification. Zero external storage.',
       color: 'from-pink-500 to-pink-600'
+    },
+    {
+      icon: BarChart3,
+      title: 'Email Analytics',
+      description: 'Volume over time charts, hourly/weekly patterns, sender rankings, inbox growth curves, and sent/received ratios.',
+      color: 'from-indigo-500 to-indigo-600'
+    },
+    {
+      icon: Filter,
+      title: 'Smart Filters',
+      description: 'Auto-detect sender, domain, and subject patterns from your classified emails. Preview matches and create Gmail filters in bulk with one click.',
+      color: 'from-amber-500 to-amber-600'
+    },
+    {
+      icon: Search,
+      title: 'Semantic Search',
+      description: 'Search emails by meaning using TF-IDF relevance ranking. Find similar emails, filter by date/sender/category, with zero ML dependencies.',
+      color: 'from-teal-500 to-teal-600'
+    },
+    {
+      icon: ShieldAlert,
+      title: 'Security Scanner',
+      description: 'Detect phishing attempts, suspicious links, sender spoofing, and spam. Analyzes URLs, authentication headers, and urgency manipulation tactics.',
+      color: 'from-red-600 to-red-700'
+    },
+    {
+      icon: Copy,
+      title: 'Duplicate Cleanup',
+      description: 'Detect duplicate emails by Message-ID, content similarity, and thread analysis. Find large threads and get cleanup recommendations.',
+      color: 'from-slate-500 to-slate-600'
+    },
+    {
+      icon: AlertTriangle,
+      title: 'Priority Inbox',
+      description: 'Score emails by importance using sender patterns, urgency keywords, recency, and reply history. Configure VIP senders and priority thresholds.',
+      color: 'from-rose-500 to-rose-600'
+    },
+    {
+      icon: ListChecks,
+      title: 'Bulk Actions',
+      description: 'Select emails by sender, category, date, or label and apply batch operations. Archive, label, star, or trash thousands of emails at once.',
+      color: 'from-violet-500 to-violet-600'
+    },
+    {
+      icon: MailMinus,
+      title: 'Unsubscribe Manager',
+      description: 'Detect newsletters and marketing subscriptions automatically. View frequency stats and unsubscribe with one click via List-Unsubscribe headers.',
+      color: 'from-red-500 to-red-600'
     }
   ]
 
@@ -559,16 +615,16 @@ function RoadmapSection() {
       items: ['History ID tracking', 'Delta sync', 'State persistence']
     },
     {
-      status: 'in-progress',
+      status: 'completed',
       title: 'Smart Filters',
-      description: 'Auto-generate Gmail filters based on classification patterns',
-      items: ['Pattern detection', 'Filter suggestions', 'One-click apply']
+      description: 'Auto-generate Gmail filters from sender, domain, and subject patterns',
+      items: ['Sender/domain/subject pattern detection', 'Preview matched emails', 'Bulk filter creation', 'Existing filter management']
     },
     {
-      status: 'planned',
+      status: 'completed',
       title: 'Analytics Dashboard',
-      description: 'Visualize your email patterns and organization health',
-      items: ['Email volume trends', 'Category distribution', 'Sender insights']
+      description: 'Comprehensive email analytics with interactive charts and insights',
+      items: ['Volume over time (daily/weekly/monthly)', 'Hourly & day-of-week patterns', 'Top senders & domains ranking', 'Inbox growth curves', 'Sent vs received ratios']
     },
     {
       status: 'planned',

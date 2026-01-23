@@ -115,6 +115,69 @@ Benefits:
 - **Rate Limit Handling**: Exponential backoff with smart retries
 - **Disk Fallback**: Loads email data from disk if not in memory
 
+### 6. Priority Inbox
+
+AI-powered email priority scoring:
+
+- **Multi-Signal Scoring**: Sender frequency, reply history, urgency keywords, recency, direct-to detection
+- **Three Priority Levels**: High (red), Medium (yellow), Low (green) with configurable thresholds
+- **VIP Senders**: Mark important senders for automatic priority boost
+- **Low Priority List**: Suppress newsletters and automated senders
+- **Persistent Config**: Priority settings saved to disk
+- **Score Breakdown**: See percentage score for each email
+
+### 7. Bulk Actions
+
+Batch operations on filtered email selections:
+
+- **Multi-Criteria Filters**: Select by sender, category, label, subject, date range
+- **12 Actions**: Label, archive, trash, star, mark read/unread, mark important, mark spam
+- **Batch API**: Uses Gmail batchModify for fast bulk operations (1000 per request)
+- **Progress Tracking**: Real-time progress bars for large operations
+- **Safety Checks**: Confirmation required for destructive actions (trash, spam)
+- **Label Management**: Create new labels or use existing ones
+
+### 7. Semantic Search
+
+Search emails by meaning using TF-IDF relevance ranking:
+
+- **TF-IDF Index**: Builds a search index from subjects, senders, and body previews
+- **Relevance Ranking**: Results ranked by cosine similarity with score display
+- **Subject Boosting**: Exact matches in subject lines are prioritized
+- **Advanced Filters**: Filter by sender, category, date range
+- **Find Similar**: Discover emails similar to a selected result
+- **Zero Dependencies**: Pure Python implementation, no ML libraries required
+
+### 7. Unsubscribe Manager
+
+Detect and manage newsletter/marketing subscriptions:
+
+- **Auto-Detection**: Identifies subscriptions via List-Unsubscribe headers, body links, sender patterns
+- **Frequency Analysis**: Shows emails/week from each sender
+- **One-Click Unsubscribe**: Open unsubscribe links or send unsubscribe emails via Gmail API
+- **Subscription Stats**: Total subscriptions, daily/weekly/monthly breakdown, top domains
+- **Status Tracking**: Track which subscriptions you've already unsubscribed from
+- **Smart Filtering**: Filter by frequency, unsubscribe availability, or status
+
+### 7. Smart Filters
+
+Automatically discover email patterns and create Gmail filters:
+
+- **Sender Patterns**: Identifies senders that consistently map to a category
+- **Domain Patterns**: Finds domains with multiple senders in the same category
+- **Subject Keywords**: Discovers subject line keywords indicating categories
+- **Preview**: See which emails each filter would match before creating
+- **Bulk Create**: Select multiple filters and create them all at once
+- **Manage Existing**: View and delete existing Gmail filters
+- **Auto-Label**: Creates Gmail labels automatically if they don't exist
+
+**How it works:**
+1. Classify your emails first (Process tab)
+2. Go to Smart Filters tab and click "Analyze Patterns"
+3. Review suggested filters with match counts
+4. Preview matched emails for each filter
+5. Create individually or in bulk
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -236,6 +299,13 @@ gmail-organizer/
 │   ├── classifier.py         # AI classification with Anthropic
 │   ├── analyzer.py           # Inbox pattern analysis
 │   ├── claude_integration.py # Claude Code CLI integration
+│   ├── filters.py            # Smart filter pattern detection & creation
+│   ├── unsubscribe.py        # Subscription detection & unsubscribe management
+│   ├── search.py             # TF-IDF semantic search engine
+│   ├── bulk_actions.py       # Batch Gmail operations engine
+│   ├── priority.py           # Priority inbox scoring engine
+│   ├── duplicates.py         # Duplicate detection & thread cleanup
+│   ├── security.py           # Phishing/spam/spoofing detection
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
@@ -399,8 +469,8 @@ The email processing runs locally on your machine for privacy. Clone the repo an
 - [x] **Non-Blocking UI** - Switch tabs/accounts without stopping syncs
 - [x] **Data Persistence** - Email data never deleted, loads from disk on restart
 - [x] **5-Tab Dashboard UI** - Dashboard, Analyze, Process, Results, Settings
-- [ ] **Smart Filters** - Automatic filter rule generation
-- [ ] **Analytics Dashboard** - Email insights and trends
+- [x] **Smart Filters** - Auto-generate Gmail filters from sender/domain/subject patterns with bulk create and preview
+- [x] **Analytics Dashboard** - Email volume over time, hourly/weekly patterns, sender/domain breakdown, inbox growth charts
 - [ ] **Mobile Companion** - iOS/Android notification app
 - [ ] **Calendar Integration** - Auto-schedule from email context
 

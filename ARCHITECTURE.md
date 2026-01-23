@@ -102,14 +102,20 @@ Gmail API wrapper with two fetch strategies:
 
 ### App UI (`app.py`)
 
-Five-tab Streamlit interface with sidebar controls.
+Seven-tab Streamlit interface with sidebar controls.
 
 **Tabs:**
 1. **Dashboard** - Account overview, sync status cards, "Sync All" button
-2. **Analyze** - Pattern analysis using already-synced data
-3. **Process** - Classification using synced data (Claude Code or API)
-4. **Results** - Multi-account results with search/filter
-5. **Settings** - Classification method, sync config, data management
+2. **Analytics** - Email volume/time charts, hourly/weekly patterns, top senders/domains
+3. **Search** - TF-IDF semantic search with relevance ranking and find-similar
+4. **Smart Filters** - Pattern detection, filter suggestions, bulk create, existing filter management
+5. **Unsubscribe** - Subscription detection, frequency analysis, one-click unsubscribe
+6. **Bulk Actions** - Multi-criteria filter + batch Gmail operations with progress
+4. **Priority** - Multi-signal priority scoring with configurable thresholds
+6. **Analyze** - Pattern analysis using already-synced data
+7. **Process** - Classification using synced data (Claude Code or API)
+8. **Results** - Multi-account results with search/filter
+9. **Settings** - Classification method, sync config, data management
 
 **Auto-refresh mechanism:**
 ```python
@@ -121,6 +127,87 @@ if sync_mgr.is_any_syncing():
 - Polls every 2 seconds while any sync is active
 - Stops automatically when all syncs complete
 - Works with any Streamlit version (no fragment dependency)
+
+### SmartFilterGenerator (`gmail_organizer/filters.py`)
+
+Analyzes classified email patterns to discover and create Gmail filters automatically.
+
+**Pattern detection strategies:**
+1. **Sender patterns** - Identifies senders that consistently map to a category
+2. **Domain patterns** - Finds domains with multiple senders in the same category
+3. **Subject keyword patterns** - Discovers subject line keywords indicating categories
+
+**API:**
+```
+SmartFilterGenerator
+├── analyze_patterns(emails, min_frequency)    # Discover filter-worthy patterns
+├── preview_filter(rule, emails)               # Preview which emails would match
+├── create_filter(rule)                        # Create filter via Gmail API
+├── list_existing_filters()                    # List current Gmail filters
+├── delete_filter(filter_id)                   # Remove a Gmail filter
+└── _deduplicate_rules(rules)                  # Remove overlapping rules
+```
+
+**FilterRule fields:**
+- `criteria`: Dict with `from`, `subject`, or `hasTheWord` keys
+- `action_label`: Gmail label name to apply
+- `label_id`: Gmail label ID (resolved before creation)
+- `description`: Human-readable rule explanation
+- `match_count`: Number of emails matching this pattern
+
+**Gmail filter creation flow:**
+1. Analyze patterns from classified emails
+2. User previews matched emails per filter
+3. Label is created if it doesn't exist (`_get_or_create_label`)
+4. Filter created via `users.settings.filters.create` API
+
+### SearchIndex (`gmail_organizer/search.py`)
+
+Pure Python TF-IDF search engine for email content.
+
+**Algorithm:**
+1. **Tokenization**: Splits text, removes stop words, normalizes
+2. **TF-IDF Vectorization**: Augmented term frequency * smoothed IDF
+3. **Cosine Similarity**: Sparse vector dot product for relevance scoring
+4. **Field Weighting**: Subject (3x), Sender (2x), Body (1x)
+5. **Subject Boosting**: Exact query matches in subject get 2x score boost
+
+**API:**
+```
+SearchIndex
+├── build_index(emails)                       # Build TF-IDF index
+├── search(query, filters...)                 # Search with relevance ranking
+├── find_similar(email, limit)                # Find similar emails
+├── get_suggestions(partial_query)            # Autocomplete suggestions
+├── document_count                            # Number of indexed docs
+└── vocabulary_size                           # Number of unique terms
+```
+
+**Performance:** Indexes 80,000+ emails in seconds. Pure Python, no external ML dependencies.
+
+### UnsubscribeManager (`gmail_organizer/unsubscribe.py`)
+
+Detects email subscriptions and provides unsubscribe capabilities.
+
+**Detection strategies:**
+1. **List-Unsubscribe header** - Standard email header for automated unsubscribe
+2. **Body URL patterns** - Finds unsubscribe/opt-out URLs in email content
+3. **Marketing domain detection** - Known ESP domains (Mailchimp, SendGrid, etc.)
+4. **Sender pattern analysis** - Newsletter-like naming patterns
+5. **Automated subject detection** - Repeated prefixes, numbered issues
+
+**API:**
+```
+UnsubscribeManager
+├── detect_subscriptions(emails)              # Scan emails for subscriptions
+├── unsubscribe_via_email(subscription)       # Send unsubscribe email via Gmail API
+├── mark_unsubscribed(sender_email)           # Manually mark as unsubscribed
+├── ignore_subscription(sender_email)         # Hide from future scans
+├── get_subscription_stats(subscriptions)     # Summary statistics
+└── get_unsubscribe_candidates(subscriptions) # Recommended unsubscribes
+```
+
+**State persistence:** Stores unsubscribe/ignore state in `.sync-state/unsubscribe_state.json`
 
 ## Data Flow
 
