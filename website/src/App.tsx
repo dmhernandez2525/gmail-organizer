@@ -26,7 +26,8 @@ import {
   MailMinus,
   Search,
   ListChecks,
-  AlertTriangle
+  AlertTriangle,
+  Copy
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -329,6 +330,12 @@ function FeaturesSection() {
       title: 'Semantic Search',
       description: 'Search emails by meaning using TF-IDF relevance ranking. Find similar emails, filter by date/sender/category, with zero ML dependencies.',
       color: 'from-teal-500 to-teal-600'
+    },
+    {
+      icon: Copy,
+      title: 'Duplicate Cleanup',
+      description: 'Detect duplicate emails by Message-ID, content similarity, and thread analysis. Find large threads and get cleanup recommendations.',
+      color: 'from-slate-500 to-slate-600'
     },
     {
       icon: AlertTriangle,
