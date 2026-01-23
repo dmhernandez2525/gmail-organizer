@@ -15,6 +15,7 @@ from gmail_organizer.unsubscribe import UnsubscribeManager
 from gmail_organizer.search import SearchIndex
 from gmail_organizer.bulk_actions import BulkActionEngine, filter_emails
 from gmail_organizer.priority import PriorityScorer
+from gmail_organizer.duplicates import DuplicateDetector
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2188,6 +2189,144 @@ def priority_tab():
         st.caption(f"Showing first 100 of {len(filtered)} emails.")
 
 
+def duplicates_tab():
+    """Duplicate detection and thread cleanup"""
+    st.header("Duplicate & Thread Cleanup")
+    st.markdown("Detect duplicate emails and manage large threads to clean up your inbox.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="dup_account")
+    account_name = account_options[selected_label]
+    emails = sync_mgr.get_emails(account_name)
+
+    detector = DuplicateDetector()
+
+    st.markdown("---")
+
+    dup_tab, thread_tab = st.tabs(["Duplicates", "Large Threads"])
+
+    with dup_tab:
+        st.subheader("Duplicate Detection")
+
+        if st.button("Scan for Duplicates", type="primary", key="dup_scan"):
+            with st.spinner("Scanning for duplicate emails..."):
+                duplicates = detector.find_duplicates(emails)
+                st.session_state[f'duplicates_{account_name}'] = duplicates
+
+        dup_key = f'duplicates_{account_name}'
+        if dup_key in st.session_state:
+            duplicates = st.session_state[dup_key]
+
+            if not duplicates:
+                st.success("No duplicates found!")
+            else:
+                stats = detector.get_cleanup_stats(duplicates, [])
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Duplicate Groups", stats['duplicate_groups'])
+                with col2:
+                    st.metric("Removable Emails", stats['removable_duplicates'])
+                with col3:
+                    st.metric("Space Savings", f"{stats['space_savings_mb']:.1f} MB")
+
+                # Show by reason
+                st.caption(
+                    f"By type: Exact ID: {stats['by_reason'].get('exact_id', 0)}, "
+                    f"Similar: {stats['by_reason'].get('similar_content', 0)}, "
+                    f"Thread: {stats['by_reason'].get('same_thread', 0)}"
+                )
+
+                for i, group in enumerate(duplicates[:30]):
+                    reason_label = {
+                        'exact_id': 'Exact Duplicate',
+                        'similar_content': 'Similar Content',
+                        'same_thread': 'Thread Duplicate'
+                    }.get(group.reason, group.reason)
+
+                    with st.expander(
+                        f"{reason_label}: {group.keep_email.get('subject', '')[:50]} "
+                        f"({group.count} copies)",
+                        expanded=False
+                    ):
+                        st.markdown(f"**Keep:** {group.keep_email.get('sender', '')[:40]} "
+                                    f"— {group.keep_email.get('date', '')[:16]}")
+                        st.markdown(f"**Removable:** {group.removable_count} emails")
+
+                        for j, email in enumerate(group.emails):
+                            if email.get('id') != group.keep_email.get('id'):
+                                st.caption(
+                                    f"  Remove: {email.get('sender', '')[:30]} "
+                                    f"— {email.get('date', '')[:16]}"
+                                )
+
+    with thread_tab:
+        st.subheader("Large Threads")
+
+        min_thread_size = st.slider("Minimum thread size", 5, 50, 10,
+                                    key="dup_min_thread")
+
+        if st.button("Find Large Threads", type="primary", key="dup_threads"):
+            with st.spinner("Scanning for large threads..."):
+                threads = detector.find_large_threads(emails, min_size=min_thread_size)
+                st.session_state[f'threads_{account_name}'] = threads
+
+        thread_key = f'threads_{account_name}'
+        if thread_key in st.session_state:
+            threads = st.session_state[thread_key]
+
+            if not threads:
+                st.success("No large threads found!")
+            else:
+                st.info(f"Found {len(threads)} threads with {min_thread_size}+ messages")
+
+                for i, thread in enumerate(threads[:20]):
+                    with st.expander(
+                        f"{thread.subject[:60]} ({thread.count} messages, "
+                        f"{thread.participant_count} participants)",
+                        expanded=False
+                    ):
+                        st.markdown(f"**Thread ID:** {thread.thread_id}")
+                        st.markdown(f"**Messages:** {thread.count}")
+                        st.markdown(f"**Participants:** {thread.participant_count}")
+
+                        # Show first/last few messages
+                        if thread.emails:
+                            st.caption("First messages:")
+                            for e in thread.emails[:3]:
+                                st.caption(
+                                    f"  {e.get('sender', '')[:30]} — "
+                                    f"{e.get('date', '')[:16]}"
+                                )
+                            if thread.count > 6:
+                                st.caption(f"  ... {thread.count - 6} more ...")
+                            if thread.count > 3:
+                                st.caption("Last messages:")
+                                for e in thread.emails[-3:]:
+                                    st.caption(
+                                        f"  {e.get('sender', '')[:30]} — "
+                                        f"{e.get('date', '')[:16]}"
+                                    )
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2209,7 +2348,8 @@ def main():
     # Main tabs
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
-        "Unsubscribe", "Bulk Actions", "Analyze", "Process", "Results", "Settings"
+        "Unsubscribe", "Bulk Actions", "Cleanup", "Analyze", "Process",
+        "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -2227,12 +2367,14 @@ def main():
     with tabs[6]:
         bulk_actions_tab()
     with tabs[7]:
-        analyze_tab()
+        duplicates_tab()
     with tabs[8]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[9]:
-        results_tab()
+        process_emails_tab()
     with tabs[10]:
+        results_tab()
+    with tabs[11]:
         settings_tab()
 
     # Auto-refresh while syncing

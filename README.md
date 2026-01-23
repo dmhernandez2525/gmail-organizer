@@ -304,6 +304,7 @@ gmail-organizer/
 │   ├── search.py             # TF-IDF semantic search engine
 │   ├── bulk_actions.py       # Batch Gmail operations engine
 │   ├── priority.py           # Priority inbox scoring engine
+│   ├── duplicates.py         # Duplicate detection & thread cleanup
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
