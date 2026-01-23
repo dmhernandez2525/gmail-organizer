@@ -18,6 +18,7 @@ from gmail_organizer.priority import PriorityScorer
 from gmail_organizer.duplicates import DuplicateDetector
 from gmail_organizer.security import EmailSecurityScanner
 from gmail_organizer.reminders import FollowUpDetector
+from gmail_organizer.summaries import EmailSummarizer
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2523,6 +2524,134 @@ def reminders_tab():
                 st.text(snippet[:300])
 
 
+def summaries_tab():
+    """Email summaries - digest views and thread overviews"""
+    st.header("Email Summaries")
+    st.markdown("Generate digest summaries, view thread conversations, and identify trending topics.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": n for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="summary_account")
+    account_name = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    summarizer = EmailSummarizer()
+
+    digest_tab, threads_tab = st.tabs(["Digest", "Thread Summaries"])
+
+    with digest_tab:
+        col1, col2 = st.columns(2)
+        with col1:
+            period = st.selectbox("Period", ["daily", "weekly", "monthly"], key="summary_period")
+        with col2:
+            ref_date = st.date_input("Reference date", key="summary_date")
+
+        if st.button("Generate Digest", type="primary", key="gen_digest"):
+            with st.spinner("Generating digest..."):
+                digest = summarizer.generate_digest(
+                    emails, period=period,
+                    reference_date=ref_date.strftime("%Y-%m-%d") if ref_date else None
+                )
+                st.session_state[f'digest_{account_name}'] = digest
+
+        digest_key = f'digest_{account_name}'
+        if digest_key in st.session_state:
+            digest = st.session_state[digest_key]
+
+            st.subheader(f"Digest: {digest.period_start} to {digest.period_end}")
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Emails", digest.total_emails)
+            with col2:
+                st.metric("Threads", digest.total_threads)
+            with col3:
+                st.metric("Need Response", digest.response_needed)
+            with col4:
+                st.metric("Busiest Hour", f"{digest.busiest_hour}:00")
+
+            if digest.trending_topics:
+                st.markdown("**Trending Topics:**")
+                topic_text = ", ".join(f"`{word}` ({count})" for word, count in digest.trending_topics[:8])
+                st.markdown(topic_text)
+
+            if digest.category_breakdown:
+                st.markdown("**Category Breakdown:**")
+                cat_df = pd.DataFrame(
+                    list(digest.category_breakdown.items()),
+                    columns=["Category", "Count"]
+                )
+                st.bar_chart(cat_df.set_index("Category"))
+
+            if digest.top_senders:
+                st.markdown("**Top Senders:**")
+                for sender, count in digest.top_senders[:5]:
+                    st.markdown(f"- `{sender}` - {count} emails")
+
+            if digest.highlights:
+                st.markdown("---")
+                st.subheader("Highlights")
+                for h in digest.highlights[:5]:
+                    st.markdown(f"- **{h['subject']}** from {h['sender']}")
+                    if h.get('snippet'):
+                        st.caption(h['snippet'])
+
+            if digest.action_items:
+                st.markdown("---")
+                st.subheader("Action Items")
+                for item in digest.action_items[:5]:
+                    st.markdown(f"- **{item['subject']}** from {item['sender']}")
+                    actions_str = ", ".join(item.get('actions', []))
+                    if actions_str:
+                        st.caption(f"Detected: {actions_str}")
+
+    with threads_tab:
+        if st.button("Analyze Threads", type="primary", key="analyze_threads"):
+            with st.spinner("Analyzing email threads..."):
+                thread_summaries = summarizer.summarize_threads(emails, limit=30)
+                st.session_state[f'thread_summaries_{account_name}'] = thread_summaries
+
+        threads_key = f'thread_summaries_{account_name}'
+        if threads_key in st.session_state:
+            thread_summaries = st.session_state[threads_key]
+
+            if not thread_summaries:
+                st.info("No multi-message threads found.")
+            else:
+                st.subheader(f"Top Threads ({len(thread_summaries)})")
+
+                for i, ts in enumerate(thread_summaries):
+                    icons = ""
+                    if ts.has_question:
+                        icons += "❓ "
+                    if ts.has_action_item:
+                        icons += "📋 "
+
+                    with st.expander(
+                        f"{icons}[{ts.message_count} msgs] {ts.subject[:50]}",
+                        expanded=(i < 3)
+                    ):
+                        st.markdown(f"**Participants:** {', '.join(ts.participants[:5])}")
+                        st.markdown(f"**Messages:** {ts.message_count}")
+                        st.markdown(f"**Period:** {ts.date_range}")
+                        st.markdown(f"**Last from:** {ts.last_sender}")
+                        if ts.snippet:
+                            st.markdown("**Latest:**")
+                            st.text(ts.snippet)
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2545,7 +2674,7 @@ def main():
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
-        "Analyze", "Process", "Results", "Settings"
+        "Summaries", "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -2569,12 +2698,14 @@ def main():
     with tabs[9]:
         reminders_tab()
     with tabs[10]:
-        analyze_tab()
+        summaries_tab()
     with tabs[11]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[12]:
-        results_tab()
+        process_emails_tab()
     with tabs[13]:
+        results_tab()
+    with tabs[14]:
         settings_tab()
 
     # Auto-refresh while syncing
