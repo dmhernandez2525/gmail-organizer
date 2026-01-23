@@ -14,6 +14,7 @@ from gmail_organizer.filters import SmartFilterGenerator, FilterRule
 from gmail_organizer.unsubscribe import UnsubscribeManager
 from gmail_organizer.search import SearchIndex
 from gmail_organizer.bulk_actions import BulkActionEngine, filter_emails
+from gmail_organizer.priority import PriorityScorer
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2053,6 +2054,140 @@ def bulk_actions_tab():
                         st.code(err)
 
 
+def priority_tab():
+    """Priority inbox - score and rank emails by importance"""
+    st.header("Priority Inbox")
+    st.markdown("Emails ranked by importance using sender patterns, urgency keywords, "
+                "recency, and reply history.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    account_options = {f"{name} ({email}) - {count:,} emails": (name, email)
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="priority_account")
+    account_name, account_email = account_options[selected_label]
+
+    emails = sync_mgr.get_emails(account_name)
+
+    scorer = PriorityScorer()
+
+    # Configuration in expander
+    with st.expander("Priority Settings", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            high_threshold = st.slider(
+                "High priority threshold", 0.3, 0.9, scorer.thresholds.get('high', 0.7),
+                step=0.05, key="priority_high"
+            )
+            medium_threshold = st.slider(
+                "Medium priority threshold", 0.1, 0.7, scorer.thresholds.get('medium', 0.4),
+                step=0.05, key="priority_medium"
+            )
+            if st.button("Save Thresholds", key="priority_save_thresh"):
+                scorer.thresholds = {'high': high_threshold, 'medium': medium_threshold}
+                st.success("Thresholds saved!")
+
+        with col2:
+            vip_input = st.text_area(
+                "VIP Senders (one per line)",
+                value="\n".join(scorer.vip_senders),
+                height=100, key="priority_vip"
+            )
+            low_input = st.text_area(
+                "Low Priority Senders (one per line)",
+                value="\n".join(scorer.low_priority_senders),
+                height=100, key="priority_low"
+            )
+            if st.button("Save Sender Lists", key="priority_save_senders"):
+                scorer.vip_senders = [s.strip() for s in vip_input.split('\n') if s.strip()]
+                scorer.low_priority_senders = [s.strip() for s in low_input.split('\n') if s.strip()]
+                st.success("Sender lists saved!")
+
+    st.markdown("---")
+
+    # Score emails
+    if st.button("Score Emails", type="primary", key="priority_score"):
+        with st.spinner("Scoring emails by priority..."):
+            scored = scorer.score_emails(emails, user_email=account_email)
+            st.session_state[f'priority_scored_{account_name}'] = scored
+
+    scored_key = f'priority_scored_{account_name}'
+    if scored_key not in st.session_state:
+        st.info("Click 'Score Emails' to rank your inbox by priority.")
+        return
+
+    scored = st.session_state[scored_key]
+
+    # Stats
+    stats = scorer.get_priority_stats(scored)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("High Priority", stats['high'])
+    with col2:
+        st.metric("Medium Priority", stats['medium'])
+    with col3:
+        st.metric("Low Priority", stats['low'])
+    with col4:
+        st.metric("Total Scored", stats['total'])
+
+    st.markdown("---")
+
+    # Filter by priority level
+    level_filter = st.radio(
+        "Show", ["All", "High", "Medium", "Low"],
+        horizontal=True, key="priority_filter"
+    )
+
+    filtered = scored
+    if level_filter != "All":
+        filtered = [(e, s, l) for e, s, l in scored if l == level_filter.lower()]
+
+    st.caption(f"Showing {len(filtered)} emails")
+
+    # Display
+    for i, (email, score, level) in enumerate(filtered[:100]):
+        icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(level, "⚪")
+        subject = email.get('subject', '(no subject)')[:70]
+        sender = email.get('sender', '')[:40]
+
+        with st.expander(
+            f"{icon} [{score:.0%}] {subject}",
+            expanded=(i < 5 and level_filter == "All")
+        ):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"**From:** {email.get('sender', '')[:60]}")
+                st.markdown(f"**Subject:** {email.get('subject', '')}")
+                st.markdown(f"**Date:** {email.get('date', '')[:20]}")
+                if email.get('category'):
+                    st.markdown(f"**Category:** {email['category']}")
+                body = email.get('body_preview', '')
+                if body:
+                    st.text(body[:200])
+            with col2:
+                st.metric("Score", f"{score:.0%}")
+                st.caption(f"Priority: {level.upper()}")
+
+    if len(filtered) > 100:
+        st.caption(f"Showing first 100 of {len(filtered)} emails.")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2073,8 +2208,8 @@ def main():
 
     # Main tabs
     tabs = st.tabs([
-        "Dashboard", "Analytics", "Search", "Smart Filters", "Unsubscribe",
-        "Bulk Actions", "Analyze", "Process", "Results", "Settings"
+        "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
+        "Unsubscribe", "Bulk Actions", "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -2084,18 +2219,20 @@ def main():
     with tabs[2]:
         search_tab()
     with tabs[3]:
-        filters_tab()
+        priority_tab()
     with tabs[4]:
-        unsubscribe_tab()
+        filters_tab()
     with tabs[5]:
-        bulk_actions_tab()
+        unsubscribe_tab()
     with tabs[6]:
-        analyze_tab()
+        bulk_actions_tab()
     with tabs[7]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[8]:
-        results_tab()
+        process_emails_tab()
     with tabs[9]:
+        results_tab()
+    with tabs[10]:
         settings_tab()
 
     # Auto-refresh while syncing

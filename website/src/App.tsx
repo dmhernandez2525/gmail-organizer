@@ -25,7 +25,8 @@ import {
   Filter,
   MailMinus,
   Search,
-  ListChecks
+  ListChecks,
+  AlertTriangle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -328,6 +329,12 @@ function FeaturesSection() {
       title: 'Semantic Search',
       description: 'Search emails by meaning using TF-IDF relevance ranking. Find similar emails, filter by date/sender/category, with zero ML dependencies.',
       color: 'from-teal-500 to-teal-600'
+    },
+    {
+      icon: AlertTriangle,
+      title: 'Priority Inbox',
+      description: 'Score emails by importance using sender patterns, urgency keywords, recency, and reply history. Configure VIP senders and priority thresholds.',
+      color: 'from-rose-500 to-rose-600'
     },
     {
       icon: ListChecks,
