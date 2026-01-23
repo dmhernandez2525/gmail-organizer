@@ -19,6 +19,7 @@ from gmail_organizer.duplicates import DuplicateDetector
 from gmail_organizer.security import EmailSecurityScanner
 from gmail_organizer.reminders import FollowUpDetector
 from gmail_organizer.summaries import EmailSummarizer
+from gmail_organizer.reputation import SenderReputation
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2652,6 +2653,120 @@ def summaries_tab():
                             st.text(ts.snippet)
 
 
+def reputation_tab():
+    """Sender reputation scores - trust scoring for email senders"""
+    st.header("Sender Reputation")
+    st.markdown("Analyze sender trustworthiness based on frequency, engagement, authentication, and relationship age.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": (n, e) for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="rep_account")
+    account_name, account_email = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    scorer = SenderReputation()
+    st.markdown("---")
+
+    if st.button("Analyze Sender Reputations", type="primary", key="rep_analyze"):
+        with st.spinner("Analyzing sender reputations..."):
+            profiles = scorer.analyze_senders(emails, user_email=account_email)
+            st.session_state[f'reputation_profiles_{account_name}'] = profiles
+
+    profiles_key = f'reputation_profiles_{account_name}'
+    if profiles_key not in st.session_state:
+        st.info("Click 'Analyze Sender Reputations' to score your senders.")
+        return
+
+    profiles = st.session_state[profiles_key]
+
+    if not profiles:
+        st.info("No sender data found.")
+        return
+
+    stats = scorer.get_reputation_stats(profiles)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Senders", stats['total_senders'])
+    with col2:
+        st.metric("Trusted", stats['by_level']['trusted'])
+    with col3:
+        st.metric("Suspicious", stats['by_level']['suspicious'])
+    with col4:
+        st.metric("Avg Score", f"{stats['avg_reputation_score']:.0f}/100")
+
+    st.markdown("---")
+
+    rep_view, new_senders_view = st.tabs(["All Senders", "First-Time Senders"])
+
+    with rep_view:
+        level_filter = st.radio(
+            "Filter by level", ["All", "Trusted", "Neutral", "Suspicious"],
+            horizontal=True, key="rep_filter"
+        )
+
+        filtered = profiles
+        if level_filter != "All":
+            filtered = [p for p in profiles if p.reputation_level == level_filter.lower()]
+
+        st.subheader(f"Senders ({len(filtered)})")
+
+        # Display as a table
+        table_data = []
+        for p in filtered[:100]:
+            level_icon = {"trusted": "🟢", "neutral": "🟡", "suspicious": "🔴", "unknown": "⚪"}
+            table_data.append({
+                "Status": level_icon.get(p.reputation_level, "⚪"),
+                "Sender": p.sender_email[:40],
+                "Score": f"{p.reputation_score:.0f}",
+                "Emails": p.total_emails,
+                "Reply Rate": f"{p.reply_rate:.0%}",
+                "Read Rate": f"{p.read_rate:.0%}",
+                "Auto": "Yes" if p.is_automated else "",
+            })
+
+        if table_data:
+            st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+
+        # Suspicious senders detail
+        if stats['suspicious_senders']:
+            st.markdown("---")
+            st.subheader("Suspicious Senders")
+            for s in stats['suspicious_senders'][:10]:
+                with st.expander(f"🔴 {s['sender_email']} (Score: {s['reputation_score']})"):
+                    st.markdown(f"**Domain:** {s['domain']}")
+                    st.markdown(f"**Total Emails:** {s['total_emails']}")
+                    st.markdown(f"**Reputation:** {s['reputation_score']}/100")
+
+    with new_senders_view:
+        lookback = st.slider("Lookback period (days)", 7, 90, 30, key="rep_lookback")
+
+        first_timers = scorer.get_first_time_senders(emails, lookback_days=lookback)
+
+        if not first_timers:
+            st.info(f"No first-time senders in the last {lookback} days.")
+        else:
+            st.subheader(f"First-Time Senders ({len(first_timers)})")
+            for ft in first_timers[:30]:
+                st.markdown(
+                    f"- **{ft['sender_name'] or ft['sender_email']}** "
+                    f"(`{ft['domain']}`) - {ft['email_count']} email(s) "
+                    f"since {ft['first_email_date'].strftime('%b %d') if hasattr(ft['first_email_date'], 'strftime') else ft['first_email_date']}"
+                )
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2674,7 +2789,7 @@ def main():
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
-        "Summaries", "Analyze", "Process", "Results", "Settings"
+        "Summaries", "Reputation", "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -2700,12 +2815,14 @@ def main():
     with tabs[10]:
         summaries_tab()
     with tabs[11]:
-        analyze_tab()
+        reputation_tab()
     with tabs[12]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[13]:
-        results_tab()
+        process_emails_tab()
     with tabs[14]:
+        results_tab()
+    with tabs[15]:
         settings_tab()
 
     # Auto-refresh while syncing
