@@ -23,6 +23,7 @@ from gmail_organizer.reputation import SenderReputation
 from gmail_organizer.storage import StorageAnalyzer
 from gmail_organizer.export import EmailExporter
 from gmail_organizer.themes import ThemeManager
+from gmail_organizer.scheduler import SyncScheduler
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -57,6 +58,9 @@ if 'theme_manager' not in st.session_state:
 
 if 'current_theme' not in st.session_state:
     st.session_state.current_theme = "default"
+
+if 'scheduler' not in st.session_state:
+    st.session_state.scheduler = SyncScheduler()
 
 # Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
@@ -833,6 +837,56 @@ def settings_tab():
                 st.text(f"  Emails: {len(status.emails_data):,}")
                 if status.last_sync_time:
                     st.text(f"  Last sync: {status.last_sync_time[:19]}")
+
+    st.markdown("---")
+
+    st.subheader("Scheduled Syncs")
+
+    scheduler = st.session_state.scheduler
+    # Connect scheduler to sync manager
+    scheduler.set_sync_callback(lambda name: sync_mgr.start_sync(name))
+
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+    if accounts:
+        status_summary = scheduler.get_status_summary()
+        if status_summary["scheduler_running"]:
+            st.success(f"Scheduler active: {status_summary['enabled_count']} account(s) scheduled")
+            if status_summary["next_sync_time"]:
+                try:
+                    from datetime import datetime
+                    next_time = datetime.fromisoformat(status_summary["next_sync_time"])
+                    st.caption(f"Next sync: {status_summary['next_sync_account']} at {next_time.strftime('%H:%M')}")
+                except Exception:
+                    pass
+        else:
+            st.info("No scheduled syncs active. Enable below to auto-sync periodically.")
+
+        for acc_name, acc_email in accounts:
+            schedule = scheduler.get_schedule(acc_name)
+            with st.expander(f"Schedule: {acc_name} ({acc_email})"):
+                enabled = st.checkbox(
+                    "Enable auto-sync",
+                    value=schedule.enabled,
+                    key=f"sched_enabled_{acc_name}"
+                )
+                interval = st.select_slider(
+                    "Sync interval",
+                    options=[5, 10, 15, 30, 60, 120, 240, 480, 720, 1440],
+                    value=schedule.interval_minutes,
+                    format_func=lambda x: f"{x} min" if x < 60 else f"{x // 60} hr{'s' if x > 60 else ''}",
+                    key=f"sched_interval_{acc_name}"
+                )
+
+                if enabled != schedule.enabled or interval != schedule.interval_minutes:
+                    scheduler.update_schedule(acc_name, enabled=enabled, interval_minutes=interval)
+                    st.rerun()
+
+                if schedule.last_run:
+                    st.caption(f"Last auto-sync: {schedule.last_run[:19]}")
+                if schedule.run_count:
+                    st.caption(f"Total auto-syncs: {schedule.run_count}")
+    else:
+        st.info("Authenticate accounts first to configure scheduled syncs.")
 
     st.markdown("---")
 
