@@ -21,7 +21,8 @@ import {
   Target,
   Menu,
   X,
-  BarChart3
+  BarChart3,
+  Filter
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -312,6 +313,12 @@ function FeaturesSection() {
       title: 'Email Analytics',
       description: 'Volume over time charts, hourly/weekly patterns, sender rankings, inbox growth curves, and sent/received ratios.',
       color: 'from-indigo-500 to-indigo-600'
+    },
+    {
+      icon: Filter,
+      title: 'Smart Filters',
+      description: 'Auto-detect sender, domain, and subject patterns from your classified emails. Preview matches and create Gmail filters in bulk with one click.',
+      color: 'from-amber-500 to-amber-600'
     }
   ]
 
@@ -566,10 +573,10 @@ function RoadmapSection() {
       items: ['History ID tracking', 'Delta sync', 'State persistence']
     },
     {
-      status: 'in-progress',
+      status: 'completed',
       title: 'Smart Filters',
-      description: 'Auto-generate Gmail filters based on classification patterns',
-      items: ['Pattern detection', 'Filter suggestions', 'One-click apply']
+      description: 'Auto-generate Gmail filters from sender, domain, and subject patterns',
+      items: ['Sender/domain/subject pattern detection', 'Preview matched emails', 'Bulk filter creation', 'Existing filter management']
     },
     {
       status: 'completed',
