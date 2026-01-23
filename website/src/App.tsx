@@ -23,7 +23,8 @@ import {
   X,
   BarChart3,
   Filter,
-  MailMinus
+  MailMinus,
+  Search
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -320,6 +321,12 @@ function FeaturesSection() {
       title: 'Smart Filters',
       description: 'Auto-detect sender, domain, and subject patterns from your classified emails. Preview matches and create Gmail filters in bulk with one click.',
       color: 'from-amber-500 to-amber-600'
+    },
+    {
+      icon: Search,
+      title: 'Semantic Search',
+      description: 'Search emails by meaning using TF-IDF relevance ranking. Find similar emails, filter by date/sender/category, with zero ML dependencies.',
+      color: 'from-teal-500 to-teal-600'
     },
     {
       icon: MailMinus,

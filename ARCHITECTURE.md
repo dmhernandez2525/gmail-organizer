@@ -107,12 +107,13 @@ Seven-tab Streamlit interface with sidebar controls.
 **Tabs:**
 1. **Dashboard** - Account overview, sync status cards, "Sync All" button
 2. **Analytics** - Email volume/time charts, hourly/weekly patterns, top senders/domains
-3. **Smart Filters** - Pattern detection, filter suggestions, bulk create, existing filter management
-4. **Unsubscribe** - Subscription detection, frequency analysis, one-click unsubscribe
-5. **Analyze** - Pattern analysis using already-synced data
-6. **Process** - Classification using synced data (Claude Code or API)
-7. **Results** - Multi-account results with search/filter
-8. **Settings** - Classification method, sync config, data management
+3. **Search** - TF-IDF semantic search with relevance ranking and find-similar
+4. **Smart Filters** - Pattern detection, filter suggestions, bulk create, existing filter management
+5. **Unsubscribe** - Subscription detection, frequency analysis, one-click unsubscribe
+6. **Analyze** - Pattern analysis using already-synced data
+7. **Process** - Classification using synced data (Claude Code or API)
+8. **Results** - Multi-account results with search/filter
+9. **Settings** - Classification method, sync config, data management
 
 **Auto-refresh mechanism:**
 ```python
@@ -157,6 +158,30 @@ SmartFilterGenerator
 2. User previews matched emails per filter
 3. Label is created if it doesn't exist (`_get_or_create_label`)
 4. Filter created via `users.settings.filters.create` API
+
+### SearchIndex (`gmail_organizer/search.py`)
+
+Pure Python TF-IDF search engine for email content.
+
+**Algorithm:**
+1. **Tokenization**: Splits text, removes stop words, normalizes
+2. **TF-IDF Vectorization**: Augmented term frequency * smoothed IDF
+3. **Cosine Similarity**: Sparse vector dot product for relevance scoring
+4. **Field Weighting**: Subject (3x), Sender (2x), Body (1x)
+5. **Subject Boosting**: Exact query matches in subject get 2x score boost
+
+**API:**
+```
+SearchIndex
+├── build_index(emails)                       # Build TF-IDF index
+├── search(query, filters...)                 # Search with relevance ranking
+├── find_similar(email, limit)                # Find similar emails
+├── get_suggestions(partial_query)            # Autocomplete suggestions
+├── document_count                            # Number of indexed docs
+└── vocabulary_size                           # Number of unique terms
+```
+
+**Performance:** Indexes 80,000+ emails in seconds. Pure Python, no external ML dependencies.
 
 ### UnsubscribeManager (`gmail_organizer/unsubscribe.py`)
 
