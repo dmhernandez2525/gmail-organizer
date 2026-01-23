@@ -26,6 +26,7 @@ from gmail_organizer.themes import ThemeManager
 from gmail_organizer.scheduler import SyncScheduler
 from gmail_organizer.notifications import NotificationManager, NotificationEvent, EVENT_TYPES
 from gmail_organizer.multi_label import MultiLabelClassifier
+from gmail_organizer.training import CategoryTrainer
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -66,6 +67,9 @@ if 'scheduler' not in st.session_state:
 
 if 'notification_manager' not in st.session_state:
     st.session_state.notification_manager = NotificationManager()
+
+if 'category_trainer' not in st.session_state:
+    st.session_state.category_trainer = CategoryTrainer()
 
 # Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
@@ -3327,6 +3331,163 @@ def multi_label_tab():
                         st.markdown(f"**Domain patterns:** `{'`, `'.join(rule.domain_patterns)}`")
 
 
+def training_tab():
+    """Custom category training - teach the system your categories"""
+    st.header("Custom Category Training")
+    st.markdown("Train custom categories by labeling example emails. The system learns your patterns.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+    trainer = st.session_state.category_trainer
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": n for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="train_account")
+    account_name = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    summary = trainer.get_training_summary()
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Training Examples", summary['total_examples'])
+    with col2:
+        st.metric("Categories", summary['category_count'])
+    with col3:
+        st.metric("Model Status", "Trained" if summary['is_trained'] else "Not trained")
+
+    st.markdown("---")
+
+    train_view, predict_view, manage_view = st.tabs(["Add Examples", "Predict", "Manage"])
+
+    with train_view:
+        st.subheader("Label Emails")
+        category_name = st.text_input("Category name", key="train_category",
+                                      placeholder="e.g., client-work, personal, receipts")
+
+        if category_name:
+            st.markdown(f"Select emails to label as **{category_name}**:")
+
+            # Show recent emails for labeling
+            page_size = 20
+            page = st.number_input("Page", 1, max(1, len(emails) // page_size), 1, key="train_page")
+            start_idx = (page - 1) * page_size
+            page_emails = emails[start_idx:start_idx + page_size]
+
+            selected_ids = []
+            for i, email in enumerate(page_emails):
+                subject = email.get('subject', '(no subject)')[:50]
+                sender = email.get('sender', email.get('from', ''))[:40]
+                if st.checkbox(f"{sender} - {subject}", key=f"train_email_{start_idx + i}"):
+                    selected_ids.append(start_idx + i)
+
+            if selected_ids and st.button(f"Add {len(selected_ids)} as '{category_name}'",
+                                          type="primary", key="train_add"):
+                selected_emails = [emails[idx] for idx in selected_ids]
+                trainer.add_examples_batch(selected_emails, category_name)
+                trainer.train()
+                st.success(f"Added {len(selected_ids)} examples to '{category_name}'. Model retrained.")
+                st.rerun()
+
+    with predict_view:
+        if not summary['is_trained'] or summary['total_examples'] == 0:
+            st.info("Add training examples first, then use Predict to classify emails.")
+        else:
+            max_predict = st.number_input("Emails to classify", 10, min(500, len(emails)),
+                                          min(100, len(emails)), key="train_predict_max")
+
+            if st.button("Predict Categories", type="primary", key="train_predict"):
+                with st.spinner("Predicting categories..."):
+                    results = trainer.predict_batch(emails[:max_predict])
+                    st.session_state[f'train_predictions_{account_name}'] = results
+
+            pred_key = f'train_predictions_{account_name}'
+            if pred_key in st.session_state:
+                results = st.session_state[pred_key]
+
+                # Stats
+                cat_counts = Counter(r.predicted_category for r in results)
+                avg_conf = sum(r.confidence for r in results) / max(len(results), 1)
+
+                st.markdown(f"**Average confidence:** {avg_conf:.0%}")
+
+                if cat_counts:
+                    st.subheader("Prediction Distribution")
+                    dist_df = pd.DataFrame(
+                        list(cat_counts.most_common()),
+                        columns=["Category", "Count"]
+                    )
+                    st.bar_chart(dist_df.set_index("Category"))
+
+                # Show predictions
+                cat_filter = st.selectbox(
+                    "Filter by category",
+                    ["All"] + list(cat_counts.keys()),
+                    key="train_cat_filter"
+                )
+
+                filtered_results = results
+                if cat_filter != "All":
+                    filtered_results = [r for r in results if r.predicted_category == cat_filter]
+
+                for i, result in enumerate(filtered_results[:30]):
+                    email = emails[i] if i < len(emails) else {}
+                    subject = email.get('subject', '')[:40]
+                    with st.expander(
+                        f"[{result.predicted_category}] ({result.confidence:.0%}) {subject}"
+                    ):
+                        st.markdown(f"**From:** {email.get('sender', email.get('from', ''))[:40]}")
+                        if result.scores:
+                            st.markdown("**Scores:**")
+                            for cat, score in list(result.scores.items())[:5]:
+                                st.markdown(f"- {cat}: {score:.3f}")
+                        if result.reasons:
+                            st.markdown("**Reasons:**")
+                            for reason in result.reasons:
+                                st.markdown(f"- {reason}")
+
+    with manage_view:
+        if not summary['categories']:
+            st.info("No categories defined yet. Add examples in the 'Add Examples' tab.")
+        else:
+            st.subheader("Category Details")
+            cat_stats = trainer.get_category_stats()
+
+            for category in sorted(summary['categories']):
+                stats = cat_stats.get(category, {})
+                with st.expander(
+                    f"**{category}** ({stats.get('example_count', 0)} examples)"
+                ):
+                    if stats.get('top_senders'):
+                        st.markdown("**Top senders:**")
+                        for sender, count in stats['top_senders']:
+                            st.markdown(f"- `{sender}` ({count})")
+
+                    if stats.get('top_domains'):
+                        st.markdown("**Top domains:**")
+                        for domain, count in stats['top_domains']:
+                            st.markdown(f"- `{domain}` ({count})")
+
+                    if stats.get('top_keywords'):
+                        st.markdown("**Top keywords:**")
+                        keywords_str = ", ".join(f"`{k}` ({c})" for k, c in stats['top_keywords'][:8])
+                        st.markdown(keywords_str)
+
+                    if st.button(f"Remove '{category}'", key=f"remove_cat_{category}"):
+                        removed = trainer.remove_category(category)
+                        st.success(f"Removed {removed} examples for '{category}'.")
+                        st.rerun()
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -3355,7 +3516,7 @@ def main():
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
         "Summaries", "Reputation", "Storage", "Export", "Notifications",
-        "Multi-Label", "Analyze", "Process", "Results", "Settings"
+        "Multi-Label", "Training", "Analyze", "Process", "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -3391,12 +3552,14 @@ def main():
     with tabs[15]:
         multi_label_tab()
     with tabs[16]:
-        analyze_tab()
+        training_tab()
     with tabs[17]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[18]:
-        results_tab()
+        process_emails_tab()
     with tabs[19]:
+        results_tab()
+    with tabs[20]:
         settings_tab()
 
     # Auto-refresh while syncing
