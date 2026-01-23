@@ -86,6 +86,8 @@ def _ics_escape(text: str) -> str:
     text = text.replace("\\", "\\\\")
     text = text.replace(",", "\\,")
     text = text.replace(";", "\\;")
+    text = text.replace("\r\n", "\\n")
+    text = text.replace("\r", "\\n")
     text = text.replace("\n", "\\n")
     return text
 
