@@ -22,6 +22,7 @@ from gmail_organizer.summaries import EmailSummarizer
 from gmail_organizer.reputation import SenderReputation
 from gmail_organizer.storage import StorageAnalyzer
 from gmail_organizer.export import EmailExporter
+from gmail_organizer.themes import ThemeManager
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -50,6 +51,12 @@ if 'analyzer' not in st.session_state:
 
 if 'processing_results' not in st.session_state:
     st.session_state.processing_results = {}
+
+if 'theme_manager' not in st.session_state:
+    st.session_state.theme_manager = ThemeManager()
+
+if 'current_theme' not in st.session_state:
+    st.session_state.current_theme = "default"
 
 # Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
@@ -836,6 +843,39 @@ def settings_tab():
 - `.email-cache/` checkpoint dirs allow resuming interrupted fetches
 - Data persists across restarts and is reused automatically
     """)
+
+    st.subheader("Theme")
+    theme_mgr = st.session_state.theme_manager
+    theme_names = theme_mgr.get_theme_names()
+    theme_labels = {name: theme_mgr.get_theme(name)["name"] for name in theme_names}
+
+    current = st.session_state.current_theme
+    selected_theme = st.selectbox(
+        "Color Theme",
+        theme_names,
+        index=theme_names.index(current) if current in theme_names else 0,
+        format_func=lambda x: theme_labels.get(x, x),
+        key="theme_select"
+    )
+
+    if selected_theme != st.session_state.current_theme:
+        st.session_state.current_theme = selected_theme
+        st.rerun()
+
+    # Theme preview
+    preview = theme_mgr.get_theme_preview(selected_theme)
+    st.caption(preview["description"])
+    preview_cols = st.columns(4)
+    with preview_cols[0]:
+        st.color_picker("Primary", preview["primary"], disabled=True, key="tp1")
+    with preview_cols[1]:
+        st.color_picker("Background", preview["background"], disabled=True, key="tp2")
+    with preview_cols[2]:
+        st.color_picker("Secondary", preview["secondary"], disabled=True, key="tp3")
+    with preview_cols[3]:
+        st.color_picker("Text", preview["text"], disabled=True, key="tp4")
+
+    st.markdown("---")
 
     st.subheader("API Configuration")
     api_key_set = st.session_state.classifier.api_key is not None
@@ -2990,6 +3030,11 @@ def main():
         logger.info("Gmail Organizer session started")
         logger.info("=" * 60)
         st.session_state.session_logged = True
+
+    # Apply theme
+    theme_css = st.session_state.theme_manager.apply_theme_css(st.session_state.current_theme)
+    if theme_css:
+        st.markdown(theme_css, unsafe_allow_html=True)
 
     st.title("Gmail Organizer")
     st.markdown("AI-powered email management for multiple Gmail accounts")
