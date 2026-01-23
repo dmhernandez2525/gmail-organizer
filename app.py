@@ -28,6 +28,7 @@ from gmail_organizer.notifications import NotificationManager, NotificationEvent
 from gmail_organizer.multi_label import MultiLabelClassifier
 from gmail_organizer.training import CategoryTrainer
 from gmail_organizer.mobile import MobileLayoutHelper, generate_pwa_icons
+from gmail_organizer.calendar_integration import EmailCalendar
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -75,6 +76,9 @@ if 'category_trainer' not in st.session_state:
 if 'mobile_helper' not in st.session_state:
     st.session_state.mobile_helper = MobileLayoutHelper()
     generate_pwa_icons()
+
+if 'email_calendar' not in st.session_state:
+    st.session_state.email_calendar = EmailCalendar()
 
 # Per-account analysis and suggestions
 if 'analysis_results' not in st.session_state:
@@ -3493,6 +3497,306 @@ def training_tab():
                         st.rerun()
 
 
+# ==================== CALENDAR TAB ====================
+
+def calendar_tab():
+    """Calendar integration tab - detect and manage email-based events."""
+    st.header("Calendar")
+    st.markdown("Detect meetings, deadlines, and events from your emails.")
+
+    cal = st.session_state.email_calendar
+    sync_mgr = st.session_state.sync_manager
+
+    # Get synced emails for event extraction
+    all_emails = []
+    statuses = sync_mgr.get_all_statuses()
+    for name, status in statuses.items():
+        if status and status.emails_data:
+            all_emails.extend(status.emails_data)
+
+    if not all_emails:
+        st.info("No synced emails available. Sync an account from the Dashboard first.")
+        return
+
+    # Extract events from emails
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown(f"**{len(all_emails):,}** emails available for event detection")
+    with col2:
+        if st.button("Scan for Events", type="primary"):
+            with st.spinner("Scanning emails for events..."):
+                new_events = cal.extract_events(all_emails)
+                if new_events:
+                    st.success(f"Found {len(new_events)} new events!")
+                else:
+                    st.info("No new events detected.")
+            st.rerun()
+
+    # Show stats
+    stats = cal.get_event_stats()
+    if stats["total_events"] > 0:
+        st.markdown("---")
+
+        metric_cols = st.columns(4)
+        with metric_cols[0]:
+            st.metric("Total Events", stats["total_events"])
+        with metric_cols[1]:
+            st.metric("Upcoming (7 days)", stats["upcoming_count"])
+        with metric_cols[2]:
+            st.metric("Busiest Day", stats["busiest_day"])
+        with metric_cols[3]:
+            type_count = len(stats.get("events_by_type", {}))
+            st.metric("Event Types", type_count)
+
+        st.markdown("---")
+
+        # Tab views within calendar
+        cal_view_tabs = st.tabs(["Upcoming", "Month View", "By Type", "Export"])
+
+        with cal_view_tabs[0]:
+            _render_upcoming_events(cal)
+
+        with cal_view_tabs[1]:
+            _render_month_view(cal)
+
+        with cal_view_tabs[2]:
+            _render_by_type(cal, stats)
+
+        with cal_view_tabs[3]:
+            _render_export(cal)
+    else:
+        st.info(
+            "No events detected yet. Click **Scan for Events** to analyze "
+            "your synced emails for meetings, deadlines, and appointments."
+        )
+
+
+def _render_upcoming_events(cal: 'EmailCalendar'):
+    """Render upcoming events list."""
+    days_ahead = st.slider("Look ahead (days)", 1, 90, 14, key="cal_days_ahead")
+    upcoming = cal.get_upcoming_events(days_ahead)
+
+    if not upcoming:
+        st.info(f"No events in the next {days_ahead} days.")
+        return
+
+    st.markdown(f"**{len(upcoming)} upcoming events:**")
+
+    for event in upcoming:
+        type_icons = {
+            "meeting": "📅",
+            "deadline": "⏰",
+            "reminder": "🔔",
+            "travel": "✈️",
+            "appointment": "📋",
+        }
+        icon = type_icons.get(event.event_type, "📌")
+
+        time_str = ""
+        if event.start_time:
+            if event.all_day:
+                time_str = event.start_time.strftime("%b %d, %Y")
+            else:
+                time_str = event.start_time.strftime("%b %d, %Y at %I:%M %p")
+
+        with st.expander(f"{icon} {event.title} - {time_str}"):
+            ecol1, ecol2 = st.columns(2)
+            with ecol1:
+                st.markdown(f"**Type:** {event.event_type.capitalize()}")
+                st.markdown(f"**Confidence:** {event.confidence:.0%}")
+                if event.location:
+                    st.markdown(f"**Location:** {event.location}")
+            with ecol2:
+                st.markdown(f"**From:** {event.source_sender}")
+                st.markdown(f"**Subject:** {event.source_subject}")
+
+            if st.button("Remove", key=f"remove_evt_{event.event_id}"):
+                cal.remove_event(event.event_id)
+                st.rerun()
+
+
+def _render_month_view(cal: 'EmailCalendar'):
+    """Render calendar month grid view."""
+    from datetime import datetime
+    import calendar
+
+    now = datetime.now()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        year = st.number_input("Year", min_value=2020, max_value=2030,
+                               value=now.year, key="cal_year")
+    with col2:
+        month_names = [calendar.month_name[i] for i in range(1, 13)]
+        month_idx = st.selectbox("Month", range(1, 13),
+                                 index=now.month - 1,
+                                 format_func=lambda x: calendar.month_name[x],
+                                 key="cal_month")
+
+    days = cal.get_calendar_month(int(year), int(month_idx))
+
+    # Build calendar grid
+    st.markdown(f"### {calendar.month_name[int(month_idx)]} {int(year)}")
+
+    # Header row
+    header_cols = st.columns(7)
+    for i, day_name in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+        with header_cols[i]:
+            st.markdown(f"**{day_name}**")
+
+    # Find the starting weekday (0=Monday)
+    first_day = days[0].date.weekday() if days else 0
+
+    # Render weeks
+    week_days = [None] * first_day + days
+    while len(week_days) % 7 != 0:
+        week_days.append(None)
+
+    for week_start in range(0, len(week_days), 7):
+        week = week_days[week_start:week_start + 7]
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            with cols[i]:
+                if day is None:
+                    st.markdown("&nbsp;", unsafe_allow_html=True)
+                elif day.has_events:
+                    event_count = day.event_count
+                    st.markdown(
+                        f"**:blue[{day.date.day}]** ({event_count})"
+                    )
+                else:
+                    st.markdown(f"{day.date.day}")
+
+    # Show events for selected month
+    month_events = [
+        e for e in cal.get_events()
+        if e.start_time and e.start_time.year == int(year)
+        and e.start_time.month == int(month_idx)
+    ]
+    if month_events:
+        st.markdown(f"---\n**Events in {calendar.month_name[int(month_idx)]}:**")
+        for event in sorted(month_events, key=lambda e: e.start_time):
+            day_str = event.start_time.strftime("%d")
+            st.markdown(f"- **{day_str}**: {event.title} ({event.event_type})")
+
+
+def _render_by_type(cal: 'EmailCalendar', stats: dict):
+    """Render events grouped by type."""
+    events_by_type = stats.get("events_by_type", {})
+
+    if not events_by_type:
+        st.info("No events to display.")
+        return
+
+    # Type distribution chart
+    type_df = pd.DataFrame({
+        "Type": list(events_by_type.keys()),
+        "Count": list(events_by_type.values()),
+    })
+    st.bar_chart(type_df.set_index("Type"))
+
+    # Day distribution
+    day_dist = stats.get("day_distribution", {})
+    if day_dist:
+        st.markdown("**Events by Day of Week:**")
+        day_order = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                     "Friday", "Saturday", "Sunday"]
+        ordered = {d: day_dist.get(d, 0) for d in day_order}
+        day_df = pd.DataFrame({
+            "Day": list(ordered.keys()),
+            "Events": list(ordered.values()),
+        })
+        st.bar_chart(day_df.set_index("Day"))
+
+    # Detailed by type
+    st.markdown("---")
+    selected_type = st.selectbox(
+        "Filter by type",
+        ["All"] + list(events_by_type.keys()),
+        key="cal_type_filter"
+    )
+
+    if selected_type == "All":
+        filtered = cal.get_events()
+    else:
+        filtered = cal.get_events_by_type(selected_type)
+
+    if filtered:
+        st.markdown(f"**{len(filtered)} events:**")
+        for event in filtered[:50]:
+            time_str = event.start_time.strftime("%b %d") if event.start_time else "No date"
+            st.markdown(
+                f"- [{event.event_type}] **{event.title}** - {time_str} "
+                f"(confidence: {event.confidence:.0%})"
+            )
+
+
+def _render_export(cal: 'EmailCalendar'):
+    """Render calendar export options."""
+    st.subheader("Export Calendar")
+
+    events = cal.get_events()
+    if not events:
+        st.info("No events to export.")
+        return
+
+    st.markdown(f"**{len(events)} events** available for export.")
+
+    export_format = st.radio(
+        "Export format",
+        ["ICS (iCalendar)", "Summary Table"],
+        key="cal_export_format"
+    )
+
+    if export_format == "ICS (iCalendar)":
+        st.markdown(
+            "ICS files can be imported into Google Calendar, Apple Calendar, "
+            "Outlook, and most calendar applications."
+        )
+        if st.button("Generate ICS File", key="cal_gen_ics"):
+            ics_content = cal.export_ics(events)
+            st.download_button(
+                label="Download .ics File",
+                data=ics_content,
+                file_name="gmail_organizer_events.ics",
+                mime="text/calendar",
+                key="cal_download_ics"
+            )
+            st.success(f"Generated ICS file with {len(events)} events.")
+    else:
+        # Summary table
+        table_data = []
+        for event in events:
+            table_data.append({
+                "Title": event.title,
+                "Type": event.event_type,
+                "Date": event.start_time.strftime("%Y-%m-%d %H:%M") if event.start_time else "",
+                "All Day": "Yes" if event.all_day else "No",
+                "Location": event.location or "-",
+                "Confidence": f"{event.confidence:.0%}",
+                "Source": event.source_sender[:30],
+            })
+
+        df = pd.DataFrame(table_data)
+        st.dataframe(df, use_container_width=True)
+
+        csv_data = df.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv_data,
+            file_name="gmail_organizer_events.csv",
+            mime="text/csv",
+            key="cal_download_csv"
+        )
+
+    st.markdown("---")
+    st.subheader("Manage Events")
+    if st.button("Clear All Events", key="cal_clear_all"):
+        cal.clear_events()
+        st.success("All events cleared.")
+        st.rerun()
+
+
 # ==================== MOBILE COMPANION TAB ====================
 
 def mobile_tab():
@@ -3594,8 +3898,8 @@ def main():
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
         "Summaries", "Reputation", "Storage", "Export", "Notifications",
-        "Multi-Label", "Training", "Mobile", "Analyze", "Process", "Results",
-        "Settings"
+        "Multi-Label", "Training", "Calendar", "Mobile", "Analyze", "Process",
+        "Results", "Settings"
     ])
 
     with tabs[0]:
@@ -3633,14 +3937,16 @@ def main():
     with tabs[16]:
         training_tab()
     with tabs[17]:
-        mobile_tab()
+        calendar_tab()
     with tabs[18]:
-        analyze_tab()
+        mobile_tab()
     with tabs[19]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[20]:
-        results_tab()
+        process_emails_tab()
     with tabs[21]:
+        results_tab()
+    with tabs[22]:
         settings_tab()
 
     # Auto-refresh while syncing
