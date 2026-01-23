@@ -115,7 +115,18 @@ Benefits:
 - **Rate Limit Handling**: Exponential backoff with smart retries
 - **Disk Fallback**: Loads email data from disk if not in memory
 
-### 6. Smart Filters
+### 6. Unsubscribe Manager
+
+Detect and manage newsletter/marketing subscriptions:
+
+- **Auto-Detection**: Identifies subscriptions via List-Unsubscribe headers, body links, sender patterns
+- **Frequency Analysis**: Shows emails/week from each sender
+- **One-Click Unsubscribe**: Open unsubscribe links or send unsubscribe emails via Gmail API
+- **Subscription Stats**: Total subscriptions, daily/weekly/monthly breakdown, top domains
+- **Status Tracking**: Track which subscriptions you've already unsubscribed from
+- **Smart Filtering**: Filter by frequency, unsubscribe availability, or status
+
+### 7. Smart Filters
 
 Automatically discover email patterns and create Gmail filters:
 
@@ -256,6 +267,7 @@ gmail-organizer/
 │   ├── analyzer.py           # Inbox pattern analysis
 │   ├── claude_integration.py # Claude Code CLI integration
 │   ├── filters.py            # Smart filter pattern detection & creation
+│   ├── unsubscribe.py        # Subscription detection & unsubscribe management
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
