@@ -203,17 +203,20 @@ class SyncScheduler:
         Args:
             account_name: Account to sync.
         """
+        triggered = False
         if self._sync_callback:
             try:
                 self._sync_callback(account_name)
+                triggered = True
             except Exception:
                 pass
 
         with self._lock:
             schedule = self._schedules.get(account_name)
             if schedule:
-                schedule.last_run = datetime.now().isoformat()
-                schedule.run_count += 1
+                if triggered:
+                    schedule.last_run = datetime.now().isoformat()
+                    schedule.run_count += 1
                 next_time = datetime.now() + timedelta(minutes=schedule.interval_minutes)
                 schedule.next_run = next_time.isoformat()
 
