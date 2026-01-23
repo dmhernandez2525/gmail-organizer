@@ -24,7 +24,8 @@ import {
   BarChart3,
   Filter,
   MailMinus,
-  Search
+  Search,
+  ListChecks
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -327,6 +328,12 @@ function FeaturesSection() {
       title: 'Semantic Search',
       description: 'Search emails by meaning using TF-IDF relevance ranking. Find similar emails, filter by date/sender/category, with zero ML dependencies.',
       color: 'from-teal-500 to-teal-600'
+    },
+    {
+      icon: ListChecks,
+      title: 'Bulk Actions',
+      description: 'Select emails by sender, category, date, or label and apply batch operations. Archive, label, star, or trash thousands of emails at once.',
+      color: 'from-violet-500 to-violet-600'
     },
     {
       icon: MailMinus,

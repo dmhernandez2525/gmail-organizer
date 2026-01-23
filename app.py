@@ -13,6 +13,7 @@ from gmail_organizer.analytics import EmailAnalytics
 from gmail_organizer.filters import SmartFilterGenerator, FilterRule
 from gmail_organizer.unsubscribe import UnsubscribeManager
 from gmail_organizer.search import SearchIndex
+from gmail_organizer.bulk_actions import BulkActionEngine, filter_emails
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -1777,6 +1778,281 @@ def search_tab():
         st.warning("Search index not built yet. Click 'Build Search Index' above.")
 
 
+def bulk_actions_tab():
+    """Bulk actions - batch operations on filtered emails"""
+    st.header("Bulk Actions")
+    st.markdown("Apply batch operations to filtered email selections.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    # Account selection
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="bulk_account")
+    account_name = account_options[selected_label]
+
+    emails = sync_mgr.get_emails(account_name)
+
+    # Get service
+    service = None
+    for name, email in accounts:
+        if name == account_name:
+            service = st.session_state.auth_manager.get_service(name)
+            break
+
+    if not service:
+        st.error("Could not connect to Gmail API for this account.")
+        return
+
+    engine = BulkActionEngine(service=service)
+
+    st.markdown("---")
+
+    # Filter section
+    st.subheader("1. Select Emails")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        sender_filter = st.text_input("Sender contains", key="bulk_sender",
+                                      placeholder="e.g., 'newsletter@'")
+        subject_filter = st.text_input("Subject contains", key="bulk_subject",
+                                       placeholder="e.g., 'weekly digest'")
+    with col2:
+        categories = sorted(set(
+            e.get('category', '') for e in emails if e.get('category')
+        ))
+        cat_options = ["Any"] + categories
+        category_filter = st.selectbox("Category", cat_options, key="bulk_category")
+
+        labels_in_emails = set()
+        for e in emails:
+            for lbl in e.get('labels', []):
+                labels_in_emails.add(lbl)
+        label_options = ["Any"] + sorted(labels_in_emails)
+        label_filter = st.selectbox("Has label", label_options, key="bulk_label")
+    with col3:
+        date_from = st.date_input("From date", value=None, key="bulk_date_from")
+        date_to = st.date_input("To date", value=None, key="bulk_date_to")
+
+    # Apply filters
+    filtered = filter_emails(
+        emails,
+        sender_filter=sender_filter,
+        category_filter=category_filter if category_filter != "Any" else "",
+        label_filter=label_filter if label_filter != "Any" else "",
+        subject_filter=subject_filter,
+        date_from=date_from.isoformat() if date_from else "",
+        date_to=date_to.isoformat() if date_to else ""
+    )
+
+    # Show filter results
+    st.info(f"**{len(filtered):,}** emails match your filters (out of {len(emails):,} total)")
+
+    if filtered:
+        # Preview sample
+        with st.expander("Preview matched emails (first 20)", expanded=False):
+            preview_data = []
+            for e in filtered[:20]:
+                preview_data.append({
+                    'From': e.get('sender', '')[:40],
+                    'Subject': e.get('subject', '')[:50],
+                    'Date': e.get('date', '')[:10],
+                    'Category': e.get('category', '')
+                })
+            st.dataframe(pd.DataFrame(preview_data), use_container_width=True)
+            if len(filtered) > 20:
+                st.caption(f"...and {len(filtered) - 20} more")
+
+    st.markdown("---")
+
+    # Action section
+    st.subheader("2. Choose Action")
+
+    if not filtered:
+        st.warning("No emails match your filters. Adjust filters above.")
+        return
+
+    # Check if emails have IDs (needed for API operations)
+    emails_with_ids = [e for e in filtered if e.get('id')]
+    if not emails_with_ids:
+        st.warning(
+            "Selected emails don't have Gmail message IDs. "
+            "They may have been synced in an older format."
+        )
+        return
+
+    message_ids = [e['id'] for e in emails_with_ids]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        action = st.selectbox("Action", [
+            "Apply Label",
+            "Remove Label",
+            "Archive",
+            "Move to Inbox",
+            "Mark as Read",
+            "Mark as Unread",
+            "Star",
+            "Unstar",
+            "Mark Important",
+            "Mark Not Important",
+            "Move to Trash",
+            "Mark as Spam"
+        ], key="bulk_action")
+
+    with col2:
+        label_name = ""
+        if action in ("Apply Label", "Remove Label"):
+            existing_labels = engine.list_labels()
+            user_labels = [l for l in existing_labels
+                          if l.get('type') == 'user']
+            label_names = sorted([l['name'] for l in user_labels])
+
+            if action == "Apply Label":
+                label_input_mode = st.radio(
+                    "Label", ["Existing", "New"],
+                    horizontal=True, key="bulk_label_mode"
+                )
+                if label_input_mode == "Existing" and label_names:
+                    label_name = st.selectbox("Select label", label_names,
+                                             key="bulk_label_select")
+                else:
+                    label_name = st.text_input("New label name",
+                                              key="bulk_new_label")
+            else:
+                if label_names:
+                    label_name = st.selectbox("Label to remove", label_names,
+                                             key="bulk_label_remove")
+
+    st.markdown("---")
+
+    # Confirmation and execution
+    st.subheader("3. Execute")
+
+    danger_actions = {"Move to Trash", "Mark as Spam"}
+    is_dangerous = action in danger_actions
+
+    st.markdown(
+        f"**Action:** {action}"
+        + (f" → `{label_name}`" if label_name else "")
+    )
+    st.markdown(f"**Affected emails:** {len(message_ids):,}")
+
+    if is_dangerous:
+        st.warning(
+            f"This is a destructive action! {len(message_ids):,} emails "
+            f"will be {'trashed' if action == 'Move to Trash' else 'marked as spam'}."
+        )
+        confirm = st.checkbox(
+            "I understand this action cannot be easily undone",
+            key="bulk_confirm_danger"
+        )
+    else:
+        confirm = True
+
+    if confirm and st.button(
+        f"Execute: {action}" + (f" ({label_name})" if label_name else ""),
+        type="primary",
+        key="bulk_execute"
+    ):
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        def update_progress(current, total):
+            progress_bar.progress(current / total)
+            status_text.text(f"Processing: {current:,}/{total:,}")
+
+        # Execute the action
+        if action == "Apply Label":
+            if not label_name:
+                st.error("Please specify a label name.")
+                return
+            label_id = engine.get_or_create_label(label_name)
+            if not label_id:
+                st.error(f"Failed to get/create label: {label_name}")
+                return
+            result = engine.apply_label(message_ids, label_id, update_progress)
+
+        elif action == "Remove Label":
+            if not label_name:
+                st.error("Please specify a label to remove.")
+                return
+            label_id = engine.get_or_create_label(label_name)
+            if not label_id:
+                st.error(f"Label not found: {label_name}")
+                return
+            result = engine.remove_label(message_ids, label_id, update_progress)
+
+        elif action == "Archive":
+            result = engine.archive(message_ids, update_progress)
+
+        elif action == "Move to Inbox":
+            result = engine.unarchive(message_ids, update_progress)
+
+        elif action == "Mark as Read":
+            result = engine.mark_read(message_ids, update_progress)
+
+        elif action == "Mark as Unread":
+            result = engine.mark_unread(message_ids, update_progress)
+
+        elif action == "Star":
+            result = engine.star(message_ids, update_progress)
+
+        elif action == "Unstar":
+            result = engine.unstar(message_ids, update_progress)
+
+        elif action == "Mark Important":
+            result = engine.mark_important(message_ids, update_progress)
+
+        elif action == "Mark Not Important":
+            result = engine.mark_not_important(message_ids, update_progress)
+
+        elif action == "Move to Trash":
+            result = engine.move_to_trash(message_ids, update_progress)
+
+        elif action == "Mark as Spam":
+            result = engine.mark_spam(message_ids, update_progress)
+
+        else:
+            st.error(f"Unknown action: {action}")
+            return
+
+        # Show results
+        progress_bar.progress(1.0)
+        status_text.empty()
+
+        if result['failed'] == 0:
+            st.success(
+                f"Successfully applied '{action}' to "
+                f"{result['success']:,} emails!"
+            )
+        else:
+            st.warning(
+                f"Completed with errors: {result['success']:,} succeeded, "
+                f"{result['failed']:,} failed."
+            )
+            if result.get('errors'):
+                with st.expander("Error details"):
+                    for err in result['errors'][:5]:
+                        st.code(err)
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -1796,28 +2072,30 @@ def main():
     render_sidebar()
 
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Smart Filters", "Unsubscribe",
-        "Analyze", "Process", "Results", "Settings"
+        "Bulk Actions", "Analyze", "Process", "Results", "Settings"
     ])
 
-    with tab1:
+    with tabs[0]:
         dashboard_tab()
-    with tab2:
+    with tabs[1]:
         analytics_tab()
-    with tab3:
+    with tabs[2]:
         search_tab()
-    with tab4:
+    with tabs[3]:
         filters_tab()
-    with tab5:
+    with tabs[4]:
         unsubscribe_tab()
-    with tab6:
+    with tabs[5]:
+        bulk_actions_tab()
+    with tabs[6]:
         analyze_tab()
-    with tab7:
+    with tabs[7]:
         process_emails_tab()
-    with tab8:
+    with tabs[8]:
         results_tab()
-    with tab9:
+    with tabs[9]:
         settings_tab()
 
     # Auto-refresh while syncing
