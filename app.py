@@ -17,6 +17,7 @@ from gmail_organizer.bulk_actions import BulkActionEngine, filter_emails
 from gmail_organizer.priority import PriorityScorer
 from gmail_organizer.duplicates import DuplicateDetector
 from gmail_organizer.security import EmailSecurityScanner
+from gmail_organizer.reminders import FollowUpDetector
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2403,6 +2404,125 @@ def security_tab():
                 st.markdown(f"- {finding}")
 
 
+def reminders_tab():
+    """Follow-up reminders - detect emails needing responses"""
+    st.header("Follow-up Reminders")
+    st.markdown("Detect emails that need your response, have unanswered questions, or are awaiting replies.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": (n, e) for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="reminder_account")
+    account_name, account_email = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        max_days = st.slider("Look back (days)", 7, 90, 30, key="reminder_days")
+    with col2:
+        filter_type = st.selectbox("Show", ["All", "Overdue", "Soon", "Later"],
+                                   key="reminder_filter")
+
+    detector = FollowUpDetector()
+    st.markdown("---")
+
+    if st.button("Detect Follow-ups", type="primary", key="reminder_detect"):
+        with st.spinner("Analyzing emails for follow-up needs..."):
+            # Filter to recent emails within lookback period
+            from datetime import datetime, timezone, timedelta
+            cutoff = datetime.now(timezone.utc) - timedelta(days=max_days)
+            recent_emails = []
+            for email in emails:
+                date_str = email.get('date', '')
+                if date_str:
+                    try:
+                        parsed = detector._parse_date(email)
+                        if parsed >= cutoff:
+                            recent_emails.append(email)
+                    except Exception:
+                        recent_emails.append(email)
+                else:
+                    recent_emails.append(email)
+
+            items = detector.detect_follow_ups(recent_emails, user_email=account_email)
+            st.session_state[f'followup_items_{account_name}'] = items
+
+    items_key = f'followup_items_{account_name}'
+    if items_key not in st.session_state:
+        st.info("Click 'Detect Follow-ups' to scan for emails needing your attention.")
+        return
+
+    items = st.session_state[items_key]
+
+    if not items:
+        st.success("No follow-up items found! You're all caught up.")
+        return
+
+    stats = detector.get_follow_up_stats(items)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total", stats['total'])
+    with col2:
+        st.metric("Overdue", stats['by_urgency']['overdue'])
+    with col3:
+        st.metric("Due Soon", stats['by_urgency']['soon'])
+    with col4:
+        st.metric("Avg Wait (days)", stats['average_days_waiting'])
+
+    st.markdown("---")
+
+    # Stats breakdown
+    stat_col1, stat_col2 = st.columns(2)
+    with stat_col1:
+        st.markdown("**By Reason:**")
+        for reason, count in stats['by_reason'].items():
+            if count > 0:
+                label = reason.replace('_', ' ').title()
+                st.markdown(f"- {label}: {count}")
+    with stat_col2:
+        st.markdown("**Oldest:** {} days waiting".format(stats['oldest_days']))
+
+    st.markdown("---")
+
+    # Filter items
+    filtered = items
+    if filter_type != "All":
+        filtered = [item for item in items if item.urgency == filter_type.lower()]
+
+    st.subheader(f"Items ({len(filtered)})")
+
+    for i, item in enumerate(filtered[:50]):
+        urgency_icon = {"overdue": "🔴", "soon": "🟡", "later": "🟢"}[item.urgency]
+        reason_icon = {"question": "❓", "action_item": "📋", "awaiting_reply": "⏳"}[item.reason]
+        subject = item.email.get('subject', '(no subject)')[:60]
+
+        with st.expander(
+            f"{urgency_icon} {reason_icon} [{item.days_waiting}d] {subject}",
+            expanded=(i < 3 and item.urgency == "overdue")
+        ):
+            st.markdown(f"**From:** {item.email.get('sender', item.email.get('from', ''))[:60]}")
+            st.markdown(f"**Date:** {item.email.get('date', 'Unknown')}")
+            st.markdown(f"**Urgency:** {item.urgency.title()} ({item.days_waiting} days waiting)")
+            st.markdown(f"**Reason:** {item.reason.replace('_', ' ').title()}")
+            st.markdown(f"**Suggested Action:** {item.suggested_action}")
+
+            snippet = item.email.get('snippet', item.email.get('body', ''))
+            if snippet:
+                st.markdown("**Preview:**")
+                st.text(snippet[:300])
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2424,7 +2544,7 @@ def main():
     # Main tabs
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
-        "Unsubscribe", "Bulk Actions", "Cleanup", "Security",
+        "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
         "Analyze", "Process", "Results", "Settings"
     ])
 
@@ -2447,12 +2567,14 @@ def main():
     with tabs[8]:
         security_tab()
     with tabs[9]:
-        analyze_tab()
+        reminders_tab()
     with tabs[10]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[11]:
-        results_tab()
+        process_emails_tab()
     with tabs[12]:
+        results_tab()
+    with tabs[13]:
         settings_tab()
 
     # Auto-refresh while syncing
