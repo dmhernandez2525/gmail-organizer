@@ -27,7 +27,7 @@ class EmailAnalytics:
             if not date_str:
                 continue
             try:
-                dt = parsedate_to_datetime(date_str)
+                dt = parsedate_to_datetime(date_str).replace(tzinfo=None)
                 parsed.append((email, dt))
             except Exception:
                 # Try common fallback formats
