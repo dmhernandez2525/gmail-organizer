@@ -108,10 +108,11 @@ Seven-tab Streamlit interface with sidebar controls.
 1. **Dashboard** - Account overview, sync status cards, "Sync All" button
 2. **Analytics** - Email volume/time charts, hourly/weekly patterns, top senders/domains
 3. **Smart Filters** - Pattern detection, filter suggestions, bulk create, existing filter management
-4. **Analyze** - Pattern analysis using already-synced data
-5. **Process** - Classification using synced data (Claude Code or API)
-6. **Results** - Multi-account results with search/filter
-7. **Settings** - Classification method, sync config, data management
+4. **Unsubscribe** - Subscription detection, frequency analysis, one-click unsubscribe
+5. **Analyze** - Pattern analysis using already-synced data
+6. **Process** - Classification using synced data (Claude Code or API)
+7. **Results** - Multi-account results with search/filter
+8. **Settings** - Classification method, sync config, data management
 
 **Auto-refresh mechanism:**
 ```python
@@ -156,6 +157,30 @@ SmartFilterGenerator
 2. User previews matched emails per filter
 3. Label is created if it doesn't exist (`_get_or_create_label`)
 4. Filter created via `users.settings.filters.create` API
+
+### UnsubscribeManager (`gmail_organizer/unsubscribe.py`)
+
+Detects email subscriptions and provides unsubscribe capabilities.
+
+**Detection strategies:**
+1. **List-Unsubscribe header** - Standard email header for automated unsubscribe
+2. **Body URL patterns** - Finds unsubscribe/opt-out URLs in email content
+3. **Marketing domain detection** - Known ESP domains (Mailchimp, SendGrid, etc.)
+4. **Sender pattern analysis** - Newsletter-like naming patterns
+5. **Automated subject detection** - Repeated prefixes, numbered issues
+
+**API:**
+```
+UnsubscribeManager
+├── detect_subscriptions(emails)              # Scan emails for subscriptions
+├── unsubscribe_via_email(subscription)       # Send unsubscribe email via Gmail API
+├── mark_unsubscribed(sender_email)           # Manually mark as unsubscribed
+├── ignore_subscription(sender_email)         # Hide from future scans
+├── get_subscription_stats(subscriptions)     # Summary statistics
+└── get_unsubscribe_candidates(subscriptions) # Recommended unsubscribes
+```
+
+**State persistence:** Stores unsubscribe/ignore state in `.sync-state/unsubscribe_state.json`
 
 ## Data Flow
 

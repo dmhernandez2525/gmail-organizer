@@ -22,7 +22,8 @@ import {
   Menu,
   X,
   BarChart3,
-  Filter
+  Filter,
+  MailMinus
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -319,6 +320,12 @@ function FeaturesSection() {
       title: 'Smart Filters',
       description: 'Auto-detect sender, domain, and subject patterns from your classified emails. Preview matches and create Gmail filters in bulk with one click.',
       color: 'from-amber-500 to-amber-600'
+    },
+    {
+      icon: MailMinus,
+      title: 'Unsubscribe Manager',
+      description: 'Detect newsletters and marketing subscriptions automatically. View frequency stats and unsubscribe with one click via List-Unsubscribe headers.',
+      color: 'from-red-500 to-red-600'
     }
   ]
 

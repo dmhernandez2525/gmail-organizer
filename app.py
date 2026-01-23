@@ -11,6 +11,7 @@ from gmail_organizer.logger import setup_logger
 from gmail_organizer.sync_manager import SyncManager
 from gmail_organizer.analytics import EmailAnalytics
 from gmail_organizer.filters import SmartFilterGenerator, FilterRule
+from gmail_organizer.unsubscribe import UnsubscribeManager
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -1414,6 +1415,206 @@ def _get_or_create_label(service, label_name: str) -> str:
         return None
 
 
+def unsubscribe_tab():
+    """Unsubscribe manager - detect and manage email subscriptions"""
+    st.header("Unsubscribe Manager")
+    st.markdown("Detect newsletter and marketing subscriptions, and unsubscribe from unwanted ones.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    # Account selection
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="unsub_account")
+    account_name = account_options[selected_label]
+
+    emails = sync_mgr.get_emails(account_name)
+
+    # Get service for this account
+    service = None
+    for name, email in accounts:
+        if name == account_name:
+            service = st.session_state.auth_manager.get_service(name)
+            break
+
+    unsub_mgr = UnsubscribeManager(service=service)
+
+    st.markdown("---")
+
+    # Detect subscriptions
+    if st.button("Scan for Subscriptions", type="primary", key="unsub_scan"):
+        with st.spinner("Analyzing email patterns for subscriptions..."):
+            subs = unsub_mgr.detect_subscriptions(emails)
+            st.session_state[f'subscriptions_{account_name}'] = subs
+
+    subs_key = f'subscriptions_{account_name}'
+    if subs_key not in st.session_state:
+        st.info("Click 'Scan for Subscriptions' to detect newsletters and marketing emails.")
+        return
+
+    subscriptions = st.session_state[subs_key]
+
+    if not subscriptions:
+        st.success("No subscriptions detected in your emails!")
+        return
+
+    # Stats overview
+    stats = unsub_mgr.get_subscription_stats(subscriptions)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.metric("Subscriptions", stats['total_subscriptions'])
+    with col2:
+        st.metric("With Unsubscribe", stats['with_unsubscribe'])
+    with col3:
+        st.metric("Total Emails", f"{stats['total_emails']:,}")
+    with col4:
+        st.metric("Daily Senders", stats['daily_senders'])
+    with col5:
+        st.metric("Already Unsub'd", stats['already_unsubscribed'])
+
+    st.markdown("---")
+
+    # Filter controls
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        show_filter = st.selectbox("Show", [
+            "All Active", "With Unsubscribe Link", "High Frequency (5+/week)",
+            "Already Unsubscribed"
+        ], key="unsub_filter")
+    with col2:
+        sort_by = st.selectbox("Sort by", [
+            "Frequency (Most)", "Frequency (Least)",
+            "Recent First", "Oldest First", "Emails/Week"
+        ], key="unsub_sort")
+    with col3:
+        min_emails = st.slider("Min emails", 1, 50, 3, key="unsub_min")
+
+    # Filter subscriptions
+    filtered = subscriptions
+    if show_filter == "All Active":
+        filtered = [s for s in filtered if not s.unsubscribed]
+    elif show_filter == "With Unsubscribe Link":
+        filtered = [s for s in filtered if s.has_unsubscribe and not s.unsubscribed]
+    elif show_filter == "High Frequency (5+/week)":
+        filtered = [s for s in filtered if s.emails_per_week >= 5 and not s.unsubscribed]
+    elif show_filter == "Already Unsubscribed":
+        filtered = [s for s in filtered if s.unsubscribed]
+
+    filtered = [s for s in filtered if s.frequency >= min_emails]
+
+    # Sort
+    if sort_by == "Frequency (Most)":
+        filtered.sort(key=lambda s: s.frequency, reverse=True)
+    elif sort_by == "Frequency (Least)":
+        filtered.sort(key=lambda s: s.frequency)
+    elif sort_by == "Recent First":
+        filtered.sort(key=lambda s: s.last_received or "", reverse=True)
+    elif sort_by == "Oldest First":
+        filtered.sort(key=lambda s: s.first_received or "")
+    elif sort_by == "Emails/Week":
+        filtered.sort(key=lambda s: s.emails_per_week, reverse=True)
+
+    st.caption(f"Showing {len(filtered)} subscriptions")
+
+    # Display subscriptions
+    for i, sub in enumerate(filtered[:50]):
+        status_icon = "✅" if sub.unsubscribed else ("🔗" if sub.has_unsubscribe else "⚠️")
+        freq_label = f"{sub.emails_per_week}/wk" if sub.emails_per_week else f"{sub.frequency} total"
+
+        with st.expander(
+            f"{status_icon} {sub.sender_name or sub.sender_email} — "
+            f"{sub.frequency} emails ({freq_label})",
+            expanded=False
+        ):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"**Sender:** {sub.sender_email}")
+                if sub.sender_name:
+                    st.markdown(f"**Name:** {sub.sender_name}")
+                st.markdown(f"**Domain:** {sub.domain}")
+                st.markdown(f"**Emails:** {sub.frequency} total, ~{sub.emails_per_week}/week")
+                if sub.first_received:
+                    st.markdown(f"**First seen:** {sub.first_received[:10]}")
+                if sub.last_received:
+                    st.markdown(f"**Last seen:** {sub.last_received[:10]}")
+                if sub.category:
+                    st.markdown(f"**Category:** {sub.category}")
+
+                if sub.unsubscribed:
+                    st.success(f"Unsubscribed on {sub.unsubscribe_date[:10]}")
+
+                if sub.unsubscribe_link:
+                    st.markdown(f"**Unsubscribe URL:** `{sub.unsubscribe_link[:80]}...`"
+                                if len(sub.unsubscribe_link) > 80
+                                else f"**Unsubscribe URL:** `{sub.unsubscribe_link}`")
+
+            with col2:
+                if not sub.unsubscribed:
+                    if sub.unsubscribe_link:
+                        st.link_button(
+                            "Open Unsubscribe Link",
+                            sub.unsubscribe_link,
+                            type="primary"
+                        )
+
+                    if sub.unsubscribe_email and service:
+                        if st.button("Send Unsubscribe Email",
+                                     key=f"unsub_email_{i}"):
+                            success = unsub_mgr.unsubscribe_via_email(sub)
+                            if success:
+                                st.success("Unsubscribe email sent!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to send unsubscribe email.")
+
+                    if st.button("Mark as Unsubscribed",
+                                 key=f"unsub_mark_{i}"):
+                        unsub_mgr.mark_unsubscribed(sub.sender_email)
+                        sub.unsubscribed = True
+                        st.success("Marked as unsubscribed!")
+                        st.rerun()
+
+                    if st.button("Ignore", key=f"unsub_ignore_{i}",
+                                 help="Hide from future scans"):
+                        unsub_mgr.ignore_subscription(sub.sender_email)
+                        st.info("Subscription ignored.")
+                        st.rerun()
+
+    if len(filtered) > 50:
+        st.caption(f"Showing first 50 of {len(filtered)} subscriptions. "
+                   f"Use filters above to narrow down.")
+
+    # Top domains section
+    st.markdown("---")
+    st.subheader("Top Subscription Domains")
+
+    domain_counts = Counter()
+    for sub in [s for s in subscriptions if not s.unsubscribed]:
+        domain_counts[sub.domain] += sub.frequency
+
+    if domain_counts:
+        top_domains = domain_counts.most_common(15)
+        domain_df = pd.DataFrame(top_domains, columns=['Domain', 'Total Emails'])
+        st.bar_chart(domain_df.set_index('Domain'))
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -1433,9 +1634,9 @@ def main():
     render_sidebar()
 
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "Dashboard", "Analytics", "Smart Filters", "Analyze", "Process",
-        "Results", "Settings"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        "Dashboard", "Analytics", "Smart Filters", "Unsubscribe",
+        "Analyze", "Process", "Results", "Settings"
     ])
 
     with tab1:
@@ -1445,12 +1646,14 @@ def main():
     with tab3:
         filters_tab()
     with tab4:
-        analyze_tab()
+        unsubscribe_tab()
     with tab5:
-        process_emails_tab()
+        analyze_tab()
     with tab6:
-        results_tab()
+        process_emails_tab()
     with tab7:
+        results_tab()
+    with tab8:
         settings_tab()
 
     # Auto-refresh while syncing
