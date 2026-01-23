@@ -110,6 +110,7 @@ Seven-tab Streamlit interface with sidebar controls.
 3. **Search** - TF-IDF semantic search with relevance ranking and find-similar
 4. **Smart Filters** - Pattern detection, filter suggestions, bulk create, existing filter management
 5. **Unsubscribe** - Subscription detection, frequency analysis, one-click unsubscribe
+6. **Bulk Actions** - Multi-criteria filter + batch Gmail operations with progress
 6. **Analyze** - Pattern analysis using already-synced data
 7. **Process** - Classification using synced data (Claude Code or API)
 8. **Results** - Multi-account results with search/filter

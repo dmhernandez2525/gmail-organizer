@@ -115,7 +115,18 @@ Benefits:
 - **Rate Limit Handling**: Exponential backoff with smart retries
 - **Disk Fallback**: Loads email data from disk if not in memory
 
-### 6. Semantic Search
+### 6. Bulk Actions
+
+Batch operations on filtered email selections:
+
+- **Multi-Criteria Filters**: Select by sender, category, label, subject, date range
+- **12 Actions**: Label, archive, trash, star, mark read/unread, mark important, mark spam
+- **Batch API**: Uses Gmail batchModify for fast bulk operations (1000 per request)
+- **Progress Tracking**: Real-time progress bars for large operations
+- **Safety Checks**: Confirmation required for destructive actions (trash, spam)
+- **Label Management**: Create new labels or use existing ones
+
+### 7. Semantic Search
 
 Search emails by meaning using TF-IDF relevance ranking:
 
@@ -280,6 +291,7 @@ gmail-organizer/
 │   ├── filters.py            # Smart filter pattern detection & creation
 │   ├── unsubscribe.py        # Subscription detection & unsubscribe management
 │   ├── search.py             # TF-IDF semantic search engine
+│   ├── bulk_actions.py       # Batch Gmail operations engine
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
