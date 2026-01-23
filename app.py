@@ -20,6 +20,7 @@ from gmail_organizer.security import EmailSecurityScanner
 from gmail_organizer.reminders import FollowUpDetector
 from gmail_organizer.summaries import EmailSummarizer
 from gmail_organizer.reputation import SenderReputation
+from gmail_organizer.storage import StorageAnalyzer
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -2767,6 +2768,108 @@ def reputation_tab():
                 )
 
 
+def storage_tab():
+    """Storage analyzer - breakdown of email storage usage"""
+    st.header("Storage Analyzer")
+    st.markdown("Analyze email storage usage, identify large emails, and get cleanup recommendations.")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated.")
+        return
+
+    synced_accounts = [(n, e, len(sync_mgr.get_emails(n)))
+                       for n, e in accounts if sync_mgr.get_emails(n)]
+    if not synced_accounts:
+        st.info("No synced data. Sync accounts first.")
+        return
+
+    account_options = {f"{n} ({e}) - {c:,} emails": n for n, e, c in synced_accounts}
+    selected = st.selectbox("Account", list(account_options.keys()), key="storage_account")
+    account_name = account_options[selected]
+    emails = sync_mgr.get_emails(account_name)
+
+    analyzer = StorageAnalyzer()
+    st.markdown("---")
+
+    if st.button("Analyze Storage", type="primary", key="storage_analyze"):
+        with st.spinner("Analyzing storage usage..."):
+            report = analyzer.analyze_storage(emails)
+            st.session_state[f'storage_report_{account_name}'] = report
+
+    report_key = f'storage_report_{account_name}'
+    if report_key not in st.session_state:
+        st.info("Click 'Analyze Storage' to scan your email storage usage.")
+        return
+
+    report = st.session_state[report_key]
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Size", f"{report.total_size_mb:.1f} MB")
+    with col2:
+        st.metric("Avg Email Size", f"{report.avg_email_size_kb:.1f} KB")
+    with col3:
+        st.metric("With Attachments", report.emails_with_attachments)
+    with col4:
+        st.metric("Total Emails", len(emails))
+
+    st.markdown("---")
+
+    overview_tab, largest_tab, suggestions_tab = st.tabs(
+        ["Breakdown", "Largest Emails", "Cleanup Suggestions"]
+    )
+
+    with overview_tab:
+        if report.by_year:
+            st.subheader("Storage by Year")
+            year_data = pd.DataFrame(
+                [(y, s / (1024 * 1024)) for y, s in report.by_year.items()],
+                columns=["Year", "Size (MB)"]
+            )
+            st.bar_chart(year_data.set_index("Year"))
+
+        if report.by_domain:
+            st.subheader("Top Domains by Size")
+            domain_data = []
+            for domain, size in report.by_domain[:10]:
+                domain_data.append({"Domain": domain, "Size (MB)": round(size / (1024 * 1024), 2)})
+            if domain_data:
+                st.dataframe(pd.DataFrame(domain_data), use_container_width=True, hide_index=True)
+
+        if report.by_category:
+            st.subheader("Storage by Category")
+            cat_data = pd.DataFrame(
+                [(c, s / (1024 * 1024)) for c, s in report.by_category.items()],
+                columns=["Category", "Size (MB)"]
+            )
+            st.bar_chart(cat_data.set_index("Category"))
+
+    with largest_tab:
+        if report.largest_emails:
+            st.subheader("Largest Emails")
+            large_data = []
+            for e in report.largest_emails:
+                large_data.append({
+                    "Subject": e.get("subject", "")[:40],
+                    "Sender": e.get("sender", "")[:30],
+                    "Date": e.get("date", ""),
+                    "Size (MB)": e.get("size_mb", 0),
+                    "Attachments": "Yes" if e.get("has_attachments") else "",
+                })
+            st.dataframe(pd.DataFrame(large_data), use_container_width=True, hide_index=True)
+        else:
+            st.info("No size data available for emails.")
+
+    with suggestions_tab:
+        suggestions = analyzer.get_cleanup_suggestions(report)
+        st.subheader("Cleanup Recommendations")
+        for i, suggestion in enumerate(suggestions, 1):
+            st.markdown(f"{i}. {suggestion}")
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -2789,7 +2892,8 @@ def main():
     tabs = st.tabs([
         "Dashboard", "Analytics", "Search", "Priority", "Smart Filters",
         "Unsubscribe", "Bulk Actions", "Cleanup", "Security", "Reminders",
-        "Summaries", "Reputation", "Analyze", "Process", "Results", "Settings"
+        "Summaries", "Reputation", "Storage", "Analyze", "Process", "Results",
+        "Settings"
     ])
 
     with tabs[0]:
@@ -2817,12 +2921,14 @@ def main():
     with tabs[11]:
         reputation_tab()
     with tabs[12]:
-        analyze_tab()
+        storage_tab()
     with tabs[13]:
-        process_emails_tab()
+        analyze_tab()
     with tabs[14]:
-        results_tab()
+        process_emails_tab()
     with tabs[15]:
+        results_tab()
+    with tabs[16]:
         settings_tab()
 
     # Auto-refresh while syncing
