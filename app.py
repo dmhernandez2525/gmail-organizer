@@ -9,6 +9,7 @@ from gmail_organizer.analyzer import EmailAnalyzer
 from gmail_organizer.config import CATEGORIES
 from gmail_organizer.logger import setup_logger
 from gmail_organizer.sync_manager import SyncManager
+from gmail_organizer.analytics import EmailAnalytics
 from gmail_organizer import claude_integration as claude_code
 import time
 
@@ -288,14 +289,19 @@ def analyze_tab():
             value=True
         )
     with col2:
-        max_analyze = st.number_input(
-            "Max emails to analyze",
-            min_value=100,
-            max_value=len(emails),
-            value=min(1000, len(emails)),
-            step=100,
-            help="More emails = better pattern detection"
-        )
+        analyze_all = st.checkbox("All", value=True, key="analyze_all",
+                                  help="Analyze all synced emails")
+        if analyze_all:
+            max_analyze = len(emails)
+        else:
+            max_analyze = st.number_input(
+                "Max emails to analyze",
+                min_value=100,
+                max_value=len(emails),
+                value=min(1000, len(emails)),
+                step=100,
+                help="More emails = better pattern detection"
+            )
 
     if st.button("Analyze Patterns", type="primary", use_container_width=True):
         with st.spinner("Analyzing email patterns..."):
@@ -826,6 +832,174 @@ def settings_tab():
         st.warning("Set ANTHROPIC_API_KEY in .env file for API-based classification")
 
 
+# ==================== ANALYTICS TAB ====================
+
+def analytics_tab():
+    """Email analytics with charts and insights"""
+    st.header("Email Analytics")
+
+    sync_mgr = st.session_state.sync_manager
+    accounts = st.session_state.auth_manager.list_authenticated_accounts()
+
+    if not accounts:
+        st.warning("No accounts authenticated. Add a Gmail account from the sidebar.")
+        return
+
+    # Filter to accounts with synced data
+    synced_accounts = []
+    for name, email in accounts:
+        emails = sync_mgr.get_emails(name)
+        if emails:
+            synced_accounts.append((name, email, len(emails)))
+
+    if not synced_accounts:
+        st.info("No synced data available. Go to Dashboard and sync your accounts first.")
+        return
+
+    # Account selection
+    account_options = {f"{name} ({email}) - {count:,} emails": name
+                       for name, email, count in synced_accounts}
+    selected_label = st.selectbox("Select account", list(account_options.keys()),
+                                  key="analytics_account")
+    account_name = account_options[selected_label]
+
+    emails = sync_mgr.get_emails(account_name)
+    analytics = EmailAnalytics(emails)
+
+    # Summary metrics
+    summary = analytics.get_summary()
+    date_range = summary['date_range']
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.metric("Total Emails", f"{summary['total_emails']:,}")
+    with col2:
+        st.metric("Unique Senders", f"{summary['unique_senders']:,}")
+    with col3:
+        st.metric("Unique Domains", f"{summary['unique_domains']:,}")
+    with col4:
+        st.metric("Avg/Day", f"{summary['avg_per_day']:.1f}")
+    with col5:
+        st.metric("Date Span", f"{date_range['span_days']} days")
+
+    st.caption(f"Date range: {date_range['oldest']} to {date_range['newest']}")
+
+    st.markdown("---")
+
+    # Volume over time
+    st.subheader("Email Volume Over Time")
+    granularity = st.radio("Granularity", ["daily", "weekly", "monthly"],
+                           index=2, horizontal=True, key="analytics_granularity")
+
+    volume = analytics.get_volume_over_time(granularity)
+    if volume:
+        volume_df = pd.DataFrame(list(volume.items()), columns=['Date', 'Count'])
+        st.line_chart(volume_df.set_index('Date'))
+
+    # Inbox growth
+    st.subheader("Inbox Growth (Cumulative)")
+    growth = analytics.get_inbox_growth_rate()
+    if growth:
+        growth_df = pd.DataFrame(list(growth.items()), columns=['Month', 'Total'])
+        st.area_chart(growth_df.set_index('Month'))
+
+    st.markdown("---")
+
+    # Time patterns
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Hour of Day Distribution")
+        hourly = analytics.get_hourly_distribution()
+        hourly_df = pd.DataFrame(
+            [{'Hour': f"{h:02d}:00", 'Count': c} for h, c in hourly.items()]
+        )
+        st.bar_chart(hourly_df.set_index('Hour'))
+
+    with col2:
+        st.subheader("Day of Week Distribution")
+        daily = analytics.get_day_of_week_distribution()
+        daily_df = pd.DataFrame(
+            [{'Day': d, 'Count': c} for d, c in daily.items()]
+        )
+        st.bar_chart(daily_df.set_index('Day'))
+
+    st.markdown("---")
+
+    # Sent vs Received
+    st.subheader("Sent vs Received")
+    response = analytics.get_response_patterns()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Received", f"{response['received']:,}")
+    with col2:
+        st.metric("Sent", f"{response['sent']:,}")
+    with col3:
+        st.metric("Send/Receive Ratio", f"{response['ratio']}")
+
+    st.markdown("---")
+
+    # Top senders and domains
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Top Senders")
+        top_senders = analytics.get_top_senders(15)
+        if top_senders:
+            senders_df = pd.DataFrame(top_senders, columns=['Sender', 'Count'])
+            st.dataframe(senders_df, use_container_width=True)
+
+    with col2:
+        st.subheader("Top Domains")
+        top_domains = analytics.get_top_domains(15)
+        if top_domains:
+            domains_df = pd.DataFrame(top_domains, columns=['Domain', 'Count'])
+            st.dataframe(domains_df, use_container_width=True)
+
+    st.markdown("---")
+
+    # Busiest periods
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Busiest Days")
+        busiest = analytics.get_busiest_periods(10)
+        if busiest:
+            st.dataframe(
+                pd.DataFrame(busiest, columns=['Date', 'Emails']),
+                use_container_width=True
+            )
+    with col2:
+        st.subheader("Quietest Days")
+        quietest = analytics.get_quiet_periods(10)
+        if quietest:
+            st.dataframe(
+                pd.DataFrame(quietest, columns=['Date', 'Emails']),
+                use_container_width=True
+            )
+
+    # Monthly breakdown
+    st.markdown("---")
+    st.subheader("Monthly Breakdown")
+    monthly = analytics.get_monthly_stats()
+    if monthly:
+        monthly_df = pd.DataFrame(monthly)
+        st.dataframe(monthly_df, use_container_width=True)
+
+    # Label distribution
+    st.markdown("---")
+    st.subheader("Label Distribution")
+    labels = analytics.get_label_distribution()
+    if labels:
+        # Filter out system labels for cleaner display
+        display_labels = {k: v for k, v in labels.items()
+                         if not k.startswith('CATEGORY_')}
+        if display_labels:
+            labels_df = pd.DataFrame(
+                list(display_labels.items()), columns=['Label', 'Count']
+            )
+            st.bar_chart(labels_df.set_index('Label'))
+
+
 # ==================== MAIN ====================
 
 def main():
@@ -845,19 +1019,21 @@ def main():
     render_sidebar()
 
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Dashboard", "Analyze", "Process", "Results", "Settings"
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "Dashboard", "Analytics", "Analyze", "Process", "Results", "Settings"
     ])
 
     with tab1:
         dashboard_tab()
     with tab2:
-        analyze_tab()
+        analytics_tab()
     with tab3:
-        process_emails_tab()
+        analyze_tab()
     with tab4:
-        results_tab()
+        process_emails_tab()
     with tab5:
+        results_tab()
+    with tab6:
         settings_tab()
 
     # Auto-refresh while syncing
