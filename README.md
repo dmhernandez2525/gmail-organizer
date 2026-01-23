@@ -115,7 +115,18 @@ Benefits:
 - **Rate Limit Handling**: Exponential backoff with smart retries
 - **Disk Fallback**: Loads email data from disk if not in memory
 
-### 6. Bulk Actions
+### 6. Priority Inbox
+
+AI-powered email priority scoring:
+
+- **Multi-Signal Scoring**: Sender frequency, reply history, urgency keywords, recency, direct-to detection
+- **Three Priority Levels**: High (red), Medium (yellow), Low (green) with configurable thresholds
+- **VIP Senders**: Mark important senders for automatic priority boost
+- **Low Priority List**: Suppress newsletters and automated senders
+- **Persistent Config**: Priority settings saved to disk
+- **Score Breakdown**: See percentage score for each email
+
+### 7. Bulk Actions
 
 Batch operations on filtered email selections:
 
@@ -292,6 +303,7 @@ gmail-organizer/
 │   ├── unsubscribe.py        # Subscription detection & unsubscribe management
 │   ├── search.py             # TF-IDF semantic search engine
 │   ├── bulk_actions.py       # Batch Gmail operations engine
+│   ├── priority.py           # Priority inbox scoring engine
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
