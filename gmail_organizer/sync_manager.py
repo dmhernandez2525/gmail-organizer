@@ -59,7 +59,13 @@ class SyncManager:
                 return
             if self._statuses[account_name].state == "syncing":
                 return  # Already syncing
-            self._statuses[account_name] = SyncStatus(state="syncing", message="Starting sync...")
+            # Preserve existing emails_data during sync
+            existing = self._statuses[account_name]
+            existing.state = "syncing"
+            existing.message = "Starting sync..."
+            existing.progress = 0
+            existing.total = 0
+            existing.error = ""
 
         service, email = self._services[account_name]
         thread = threading.Thread(

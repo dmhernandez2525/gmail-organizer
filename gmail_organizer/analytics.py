@@ -2,7 +2,7 @@
 
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 from email.utils import parsedate_to_datetime
 import re
 
@@ -33,7 +33,7 @@ class EmailAnalytics:
                 # Try common fallback formats
                 for fmt in ('%Y-%m-%d %H:%M:%S', '%d %b %Y %H:%M:%S'):
                     try:
-                        dt = datetime.strptime(date_str[:20], fmt)
+                        dt = datetime.strptime(date_str.strip()[:19], fmt)
                         parsed.append((email, dt))
                         break
                     except Exception:
@@ -55,7 +55,9 @@ class EmailAnalytics:
         """Extract domain from sender"""
         email_addr = self._extract_sender_email(sender)
         if '@' in email_addr:
-            return email_addr.split('@')[1]
+            parts = email_addr.split('@')
+            if len(parts) >= 2 and parts[1]:
+                return parts[1]
         return email_addr
 
     def get_volume_over_time(self, granularity: str = "daily") -> Dict[str, int]:
@@ -137,7 +139,7 @@ class EmailAnalytics:
             cumulative[month] = total
         return cumulative
 
-    def get_response_patterns(self) -> Dict[str, any]:
+    def get_response_patterns(self) -> Dict[str, Any]:
         """Analyze sent vs received patterns"""
         sent = 0
         received = 0

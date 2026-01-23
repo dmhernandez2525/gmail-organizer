@@ -192,11 +192,15 @@ class EmailSecurityScanner:
                 break
 
         # Check for typosquatting
+        typosquat_found = False
         for legit, typos in self.TYPOSQUAT_PATTERNS.items():
+            if typosquat_found:
+                break
             for typo in typos:
                 if typo in domain:
                     score += 0.4
                     findings.append(f"Possible typosquatting: '{domain}' mimics '{legit}'")
+                    typosquat_found = True
                     break
 
         # Check for very long subdomains (hiding real domain)
@@ -258,11 +262,15 @@ class EmailSecurityScanner:
                 findings.append(f"URL shortener: {domain}")
 
             # Check for typosquatting in URLs
+            url_typosquat_found = False
             for legit, typos in self.TYPOSQUAT_PATTERNS.items():
+                if url_typosquat_found:
+                    break
                 for typo in typos:
                     if typo in domain:
                         score += 0.3
                         findings.append(f"Typosquatting URL: {domain}")
+                        url_typosquat_found = True
                         break
 
         return (score, findings) if findings else None

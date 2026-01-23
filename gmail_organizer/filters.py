@@ -56,7 +56,9 @@ class SmartFilterGenerator:
         """Extract domain from sender"""
         email = self._extract_email(sender)
         if '@' in email:
-            return email.split('@')[1]
+            parts = email.split('@')
+            if len(parts) >= 2 and parts[1]:
+                return parts[1]
         return ""
 
     def analyze_patterns(self, classified_emails: List[Dict],
@@ -208,10 +210,10 @@ class SmartFilterGenerator:
             from_val = criteria['from'].lower()
             if from_val.startswith('@'):
                 # Domain match
-                if from_val[1:] not in self._extract_domain(sender):
+                if from_val[1:] != self._extract_domain(sender):
                     return False
             else:
-                if from_val not in self._extract_email(sender):
+                if from_val != self._extract_email(sender):
                     return False
 
         if 'subject' in criteria:

@@ -354,6 +354,13 @@ class UnsubscribeManager:
                     if param.lower().startswith('subject='):
                         subject = param.split('=', 1)[1]
 
+            # Sanitize to prevent header injection
+            unsub_addr = unsub_addr.replace('\r', '').replace('\n', '').strip()
+            subject = subject.replace('\r', '').replace('\n', ' ').strip()
+
+            if not unsub_addr or '@' not in unsub_addr:
+                return False
+
             message = MIMEText("Please unsubscribe me from this mailing list.")
             message['to'] = unsub_addr
             message['subject'] = subject

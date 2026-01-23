@@ -19,10 +19,21 @@ class ClassificationRule:
     description: str = ""
 
     def __post_init__(self):
-        self._compiled_sender = [re.compile(p, re.IGNORECASE) for p in self.sender_patterns]
-        self._compiled_subject = [re.compile(p, re.IGNORECASE) for p in self.subject_patterns]
-        self._compiled_body = [re.compile(p, re.IGNORECASE) for p in self.body_patterns]
-        self._compiled_domain = [re.compile(p, re.IGNORECASE) for p in self.domain_patterns]
+        self._compiled_sender = self._safe_compile(self.sender_patterns)
+        self._compiled_subject = self._safe_compile(self.subject_patterns)
+        self._compiled_body = self._safe_compile(self.body_patterns)
+        self._compiled_domain = self._safe_compile(self.domain_patterns)
+
+    @staticmethod
+    def _safe_compile(patterns: List[str]) -> list:
+        """Compile regex patterns, skipping invalid ones."""
+        compiled = []
+        for p in patterns:
+            try:
+                compiled.append(re.compile(p, re.IGNORECASE))
+            except re.error:
+                continue
+        return compiled
 
 
 @dataclass

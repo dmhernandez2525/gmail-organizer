@@ -35,18 +35,47 @@ class EmailExporter:
     def _resolve_filepath(self, filepath: str) -> str:
         """Resolve filepath, using export_dir as base if path is relative.
 
+        Ensures the resolved path stays within export_dir to prevent
+        path traversal attacks.
+
         Args:
             filepath: The target file path.
 
         Returns:
-            Absolute file path.
+            Absolute file path within export_dir.
+
+        Raises:
+            ValueError: If the resolved path escapes export_dir.
         """
         if not os.path.isabs(filepath):
             filepath = os.path.join(self.export_dir, filepath)
-        parent_dir = os.path.dirname(filepath)
+        # Resolve any ".." components and check containment
+        resolved = os.path.realpath(filepath)
+        export_real = os.path.realpath(self.export_dir)
+        if not resolved.startswith(export_real + os.sep) and resolved != export_real:
+            raise ValueError(
+                f"Path '{filepath}' resolves outside export directory"
+            )
+        parent_dir = os.path.dirname(resolved)
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
-        return filepath
+        return resolved
+
+    def _sanitize_csv_value(self, value: str) -> str:
+        """Sanitize a value to prevent CSV injection.
+
+        Prefixes values starting with formula characters (=, +, -, @, |)
+        with a single quote to prevent execution in spreadsheet applications.
+
+        Args:
+            value: The cell value to sanitize.
+
+        Returns:
+            Sanitized value safe for CSV export.
+        """
+        if value and value[0] in ('=', '+', '-', '@', '|'):
+            return "'" + value
+        return value
 
     def filter_emails(
         self,
@@ -154,7 +183,7 @@ class EmailExporter:
                     value = email.get(field, "")
                     if isinstance(value, list):
                         value = "; ".join(str(v) for v in value)
-                    row[field] = value
+                    row[field] = self._sanitize_csv_value(str(value))
                 writer.writerow(row)
 
         return filepath
@@ -217,11 +246,11 @@ class EmailExporter:
                 # From_ line (note the space after "From")
                 f.write("From {} {}\n".format(sender_addr, mbox_date))
 
-                # Headers
-                f.write("From: {}\n".format(email.get("sender", "")))
-                f.write("To: {}\n".format(email.get("to", "")))
-                f.write("Subject: {}\n".format(email.get("subject", "")))
-                f.write("Date: {}\n".format(date_str))
+                # Headers (sanitize to prevent header injection via newlines)
+                f.write("From: {}\n".format(self._sanitize_header(email.get("sender", ""))))
+                f.write("To: {}\n".format(self._sanitize_header(email.get("to", ""))))
+                f.write("Subject: {}\n".format(self._sanitize_header(email.get("subject", ""))))
+                f.write("Date: {}\n".format(self._sanitize_header(date_str)))
 
                 if email.get("message_id"):
                     f.write("Message-ID: {}\n".format(email["message_id"]))
@@ -251,6 +280,10 @@ class EmailExporter:
                 f.write("\n")
 
         return filepath
+
+    def _sanitize_header(self, value: str) -> str:
+        """Remove newlines from header values to prevent header injection."""
+        return value.replace('\r', '').replace('\n', ' ')
 
     def _extract_email_address(self, sender: str) -> str:
         """Extract email address from a sender string.

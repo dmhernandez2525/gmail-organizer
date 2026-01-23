@@ -216,7 +216,7 @@ class EmailSummarizer:
                 date_range = f"{first_date.strftime('%b %d')} - {last_date.strftime('%b %d')}"
 
             combined_text = " ".join(
-                e.get("subject", "") + " " + e.get("snippet", e.get("body", ""))
+                (e.get("subject", "") or "") + " " + (e.get("snippet") or e.get("body") or "")
                 for e in sorted_emails
             )
 
@@ -383,8 +383,8 @@ class EmailSummarizer:
 
     def _needs_response(self, email: Dict) -> bool:
         """Check if an email likely needs a response."""
-        subject = email.get("subject", "")
-        body = email.get("snippet", email.get("body", ""))
+        subject = email.get("subject", "") or ""
+        body = email.get("snippet") or email.get("body") or ""
         combined = f"{subject} {body}"
 
         # Check for direct questions

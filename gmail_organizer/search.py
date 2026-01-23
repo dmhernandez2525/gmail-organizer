@@ -310,11 +310,9 @@ class SearchIndex:
         if norm_a == 0 or norm_b == 0:
             return 0.0
 
-        # Dot product (only iterate over smaller set)
-        if len(vec_a) > len(vec_b):
-            vec_a, vec_b = vec_b, vec_a
-
-        dot = sum(vec_a[term] * vec_b.get(term, 0) for term in vec_a)
+        # Dot product (iterate over smaller set for performance)
+        smaller, larger = (vec_a, vec_b) if len(vec_a) <= len(vec_b) else (vec_b, vec_a)
+        dot = sum(smaller[term] * larger.get(term, 0) for term in smaller)
         return dot / (norm_a * norm_b)
 
     def _vector_norm(self, vector: Dict[str, float]) -> float:

@@ -180,8 +180,8 @@ class FollowUpDetector:
         if is_sent_by_user:
             return None
 
-        subject = email.get("subject", "")
-        body = email.get("body", email.get("snippet", ""))
+        subject = email.get("subject", "") or ""
+        body = email.get("body") or email.get("snippet") or ""
         combined_text = f"{subject} {body}"
 
         # Check for action items (higher priority than questions)
@@ -283,8 +283,8 @@ class FollowUpDetector:
 
         Urgent keywords can bump the urgency level up by one tier.
         """
-        subject = email.get("subject", "")
-        body = email.get("body", email.get("snippet", ""))
+        subject = email.get("subject", "") or ""
+        body = email.get("body") or email.get("snippet") or ""
         combined_text = f"{subject} {body}"
 
         has_urgent_keywords = any(
