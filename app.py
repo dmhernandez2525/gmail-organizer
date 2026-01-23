@@ -1164,7 +1164,7 @@ def filters_tab():
     service = None
     for name, email in accounts:
         if name == account_name:
-            service = st.session_state.auth_manager.get_service(name)
+            service, _, _ = st.session_state.auth_manager.authenticate_account(name)
             break
 
     filter_gen = SmartFilterGenerator(service=service)
@@ -1572,7 +1572,7 @@ def unsubscribe_tab():
     service = None
     for name, email in accounts:
         if name == account_name:
-            service = st.session_state.auth_manager.get_service(name)
+            service, _, _ = st.session_state.auth_manager.authenticate_account(name)
             break
 
     unsub_mgr = UnsubscribeManager(service=service)
@@ -1933,7 +1933,7 @@ def bulk_actions_tab():
     service = None
     for name, email in accounts:
         if name == account_name:
-            service = st.session_state.auth_manager.get_service(name)
+            service, _, _ = st.session_state.auth_manager.authenticate_account(name)
             break
 
     if not service:
