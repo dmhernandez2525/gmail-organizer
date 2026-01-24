@@ -89,20 +89,20 @@ class DuplicateDetector:
         grouped_ids = set()
         for group in groups:
             for email in group.emails:
-                grouped_ids.add(email.get("id"))
+                grouped_ids.add(email.get("email_id"))
 
         # Strategy 2: Similar content duplicates (subject + sender + date)
-        remaining = [e for e in emails if e.get("id") not in grouped_ids]
+        remaining = [e for e in emails if e.get("email_id") not in grouped_ids]
         similar_groups = self._find_similar_content_duplicates(remaining)
         groups.extend(similar_groups)
 
         for group in similar_groups:
             for email in group.emails:
-                grouped_ids.add(email.get("id"))
+                grouped_ids.add(email.get("email_id"))
 
         # Strategy 3: Same thread duplicates (same threadId, same Message-ID
         # content forwarded or re-sent within a thread)
-        remaining = [e for e in emails if e.get("id") not in grouped_ids]
+        remaining = [e for e in emails if e.get("email_id") not in grouped_ids]
         thread_dup_groups = self._find_thread_duplicates(remaining)
         groups.extend(thread_dup_groups)
 
@@ -252,7 +252,7 @@ class DuplicateDetector:
             # Compare all pairs within the same sender
             clusters = self._cluster_similar_emails(sender_emails)
             for cluster in clusters:
-                cluster_ids = {e.get("id") for e in cluster}
+                cluster_ids = {e.get("email_id") for e in cluster}
                 if cluster_ids & processed_ids:
                     continue
                 if len(cluster) > 1:
