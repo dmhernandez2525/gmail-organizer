@@ -352,7 +352,7 @@ class FollowUpDetector:
 
     def _get_sender(self, email: Dict) -> str:
         """Extract the sender email address from the email dict."""
-        from_field = email.get("from", "")
+        from_field = email.get("sender", email.get("from", ""))
         # Handle "Name <email@example.com>" format
         match = re.search(r"<([^>]+)>", from_field)
         if match:
