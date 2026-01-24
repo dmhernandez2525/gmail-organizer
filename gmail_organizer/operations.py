@@ -107,21 +107,68 @@ class GmailOperations:
         return self.sync_state_dir / f"sync_state_{safe_email}.json"
 
     def _load_sync_state(self) -> Dict:
-        """Load sync state (historyId, last sync time, email database)"""
+        """Load sync state (historyId, last sync time, email database).
+
+        Also checks the checkpoint directory - if it has more emails than
+        the sync state (e.g., due to an interrupted sync), merges them in.
+        """
+        from gmail_organizer.logger import logger
+
+        state = {
+            "history_id": None,
+            "last_sync_time": None,
+            "emails": {},
+            "total_synced": 0
+        }
+
         sync_path = self._get_sync_state_path()
         if sync_path.exists():
             try:
                 with open(sync_path, 'r') as f:
-                    return json.load(f)
+                    state = json.load(f)
             except Exception as e:
-                from gmail_organizer.logger import logger
                 logger.warning(f"Could not load sync state: {e}")
-        return {
-            "history_id": None,
-            "last_sync_time": None,
-            "emails": {},  # email_id -> email data
-            "total_synced": 0
-        }
+
+        # Recovery: check if checkpoint has more data than sync state
+        # This handles the case where a sync was interrupted before saving state
+        checkpoint_path = self._get_checkpoint_path("")
+        sync_emails_dict = state.get("emails", {})
+
+        # Quick check: compare index size (just IDs) before loading full checkpoint
+        index_file = checkpoint_path / "index.json"
+        checkpoint_count = 0
+        if index_file.exists():
+            try:
+                with open(index_file, 'r') as f:
+                    checkpoint_count = len(json.load(f))
+            except Exception:
+                pass
+
+        if checkpoint_count > len(sync_emails_dict):
+            # Checkpoint has more data - load full checkpoint and merge
+            checkpoint = self._load_checkpoint(checkpoint_path)
+            checkpoint_emails = checkpoint.get("emails", [])
+
+            logger.info(
+                f"Checkpoint has more emails ({len(checkpoint_emails)}) than sync state "
+                f"({len(sync_emails_dict)}), merging checkpoint data"
+            )
+            # Merge: start with sync state, overlay with checkpoint data
+            merged = dict(sync_emails_dict)
+            for email in checkpoint_emails:
+                email_id = email.get("email_id", "")
+                if email_id:
+                    merged[email_id] = email
+            state["emails"] = merged
+            state["total_synced"] = len(merged)
+            # Save the merged state so we don't have to merge again next time
+            self._save_sync_state(
+                state.get("history_id", ""),
+                merged,
+                state.get("last_sync_time")
+            )
+
+        return state
 
     def _save_sync_state(self, history_id: str, emails: Dict, last_sync_time: str = None):
         """Save sync state after successful sync"""
@@ -227,24 +274,35 @@ class GmailOperations:
             # Convert to dict for efficient lookups
             emails_dict = {e['email_id']: e for e in emails}
 
+            # Merge with previously cached emails to prevent data loss
+            # (handles case where current fetch got fewer emails than a previous sync)
+            if cached_emails and len(cached_emails) > len(emails_dict):
+                logger.info(
+                    f"Merging with {len(cached_emails)} previously cached emails "
+                    f"(fetched {len(emails_dict)} this run)"
+                )
+                merged = dict(cached_emails)
+                merged.update(emails_dict)  # New data takes priority
+                emails_dict = merged
+
             # Get the historyId from the most recent message for accuracy
-            if emails:
-                try:
-                    # Get historyId from the first (most recent) message
-                    msg = self.service.users().messages().get(
-                        userId='me',
-                        id=emails[0]['email_id'],
-                        format='minimal'
-                    ).execute()
-                    current_history_id = msg.get('historyId', current_history_id)
-                except:
-                    pass  # Use profile historyId as fallback
+            try:
+                msg = self.service.users().messages().get(
+                    userId='me',
+                    id=emails[0]['email_id'],
+                    format='minimal'
+                ).execute()
+                current_history_id = msg.get('historyId', current_history_id)
+            except Exception:
+                pass  # Use profile historyId as fallback
 
             # Save sync state for future incremental syncs
             self._save_sync_state(current_history_id, emails_dict)
-            logger.info(f"Full sync complete: {len(emails)} emails, historyId={current_history_id}")
-            print(f"✓ Full sync complete: {len(emails):,} emails")
+            logger.info(f"Full sync complete: {len(emails_dict)} emails, historyId={current_history_id}")
+            print(f"✓ Full sync complete: {len(emails_dict):,} emails")
             print(f"✓ Saved sync state for future incremental syncs")
+
+            return list(emails_dict.values())
 
         return emails
 
