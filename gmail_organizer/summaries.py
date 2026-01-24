@@ -117,7 +117,7 @@ class EmailSummarizer:
         top_senders = sender_counts.most_common(10)
 
         # Thread count
-        threads = set(e.get("threadId", e.get("id", "")) for e in period_emails)
+        threads = set(e.get("threadId", e.get("email_id", "")) for e in period_emails)
 
         # Category breakdown
         category_counts = Counter()
@@ -187,7 +187,7 @@ class EmailSummarizer:
         """
         threads: Dict[str, List[Dict]] = defaultdict(list)
         for email in emails:
-            thread_id = email.get("threadId", email.get("id", ""))
+            thread_id = email.get("threadId", email.get("email_id", ""))
             if thread_id:
                 threads[thread_id].append(email)
 

@@ -191,9 +191,9 @@ class SearchIndex:
 
         # Find this email's index
         ref_idx = None
-        email_id = email.get('id', '')
+        email_id = email.get('email_id', '')
         for i, doc in enumerate(self._documents):
-            if doc.get('id') == email_id:
+            if doc.get('email_id') == email_id:
                 ref_idx = i
                 break
 

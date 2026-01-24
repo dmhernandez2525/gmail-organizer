@@ -133,7 +133,7 @@ class StorageAnalyzer:
             sender = self._extract_sender(email)
             subject = self._extract_subject(email)
             date = self._extract_date_str(email)
-            msg_id = email.get("id", "")
+            msg_id = email.get("email_id", "")
 
             email_sizes.append({
                 "id": msg_id,

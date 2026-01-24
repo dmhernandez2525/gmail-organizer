@@ -30,6 +30,7 @@ from gmail_organizer.training import CategoryTrainer
 from gmail_organizer.mobile import MobileLayoutHelper, generate_pwa_icons
 from gmail_organizer.calendar_integration import EmailCalendar
 from gmail_organizer import claude_integration as claude_code
+from collections import Counter
 import time
 
 # Set up logging
@@ -2009,7 +2010,7 @@ def bulk_actions_tab():
         return
 
     # Check if emails have IDs (needed for API operations)
-    emails_with_ids = [e for e in filtered if e.get('id')]
+    emails_with_ids = [e for e in filtered if e.get('email_id')]
     if not emails_with_ids:
         st.warning(
             "Selected emails don't have Gmail message IDs. "
@@ -2017,7 +2018,7 @@ def bulk_actions_tab():
         )
         return
 
-    message_ids = [e['id'] for e in emails_with_ids]
+    message_ids = [e['email_id'] for e in emails_with_ids]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -2390,7 +2391,7 @@ def duplicates_tab():
                         st.markdown(f"**Removable:** {group.removable_count} emails")
 
                         for j, email in enumerate(group.emails):
-                            if email.get('id') != group.keep_email.get('id'):
+                            if email.get('email_id') != group.keep_email.get('email_id'):
                                 st.caption(
                                     f"  Remove: {email.get('sender', '')[:30]} "
                                     f"— {email.get('date', '')[:16]}"
