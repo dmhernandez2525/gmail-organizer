@@ -185,7 +185,7 @@ class MultiLabelClassifier:
         Returns:
             ClassificationResult with all matching labels and confidence scores.
         """
-        email_id = email.get("id", "")
+        email_id = email.get("email_id", "")
         sender = email.get("sender", email.get("from", "")).lower()
         subject = email.get("subject", "").lower()
         body = email.get("body", email.get("snippet", "")).lower()

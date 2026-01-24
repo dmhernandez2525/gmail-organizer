@@ -93,7 +93,7 @@ class CategoryTrainer:
         """
         sender = email.get("sender", email.get("from", "")).lower()
         subject = email.get("subject", "").lower()
-        email_id = email.get("id", "")
+        email_id = email.get("email_id", "")
 
         domain = ""
         match = re.search(r"@([\w.-]+)", sender)
@@ -125,7 +125,7 @@ class CategoryTrainer:
         for email in emails:
             sender = email.get("sender", email.get("from", "")).lower()
             subject = email.get("subject", "").lower()
-            email_id = email.get("id", "")
+            email_id = email.get("email_id", "")
 
             domain = ""
             match = re.search(r"@([\w.-]+)", sender)
@@ -197,7 +197,7 @@ class CategoryTrainer:
 
         if not self._models:
             return PredictionResult(
-                email_id=email.get("id", ""),
+                email_id=email.get("email_id", ""),
                 predicted_category="unknown",
                 confidence=0.0,
             )
@@ -221,7 +221,7 @@ class CategoryTrainer:
 
         if not scores:
             return PredictionResult(
-                email_id=email.get("id", ""),
+                email_id=email.get("email_id", ""),
                 predicted_category="unknown",
                 confidence=0.0,
             )
@@ -234,7 +234,7 @@ class CategoryTrainer:
         confidence = min(1.0, confidence)
 
         return PredictionResult(
-            email_id=email.get("id", ""),
+            email_id=email.get("email_id", ""),
             predicted_category=max_cat,
             confidence=round(confidence, 3),
             scores={k: round(v, 3) for k, v in sorted(scores.items(), key=lambda x: x[1], reverse=True)},
