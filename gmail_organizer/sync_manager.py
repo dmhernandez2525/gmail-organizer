@@ -156,15 +156,75 @@ class SyncManager:
         return self._sync_state_dir / f"sync_state_{safe_email}.json"
 
     def _load_from_disk(self, email: str) -> List[Dict]:
-        """Load emails from .sync-state/ files on disk"""
+        """Load emails from .sync-state/ files on disk.
+
+        Also checks the checkpoint directory - if it has more emails
+        (e.g., from an interrupted sync), merges them into the result.
+        """
+        from gmail_organizer.logger import logger
+
+        emails_dict = {}
         sync_path = self._get_sync_state_path(email)
+        state = {}
+
         if sync_path.exists():
             try:
                 with open(sync_path, 'r') as f:
                     state = json.load(f)
                     emails_dict = state.get("emails", {})
-                    if emails_dict:
-                        return list(emails_dict.values())
             except Exception:
                 pass
+
+        # Check checkpoint for more data (handles interrupted syncs)
+        safe_email = email.replace('@', '_at_').replace('.', '_')
+        checkpoint_dir = Path(__file__).parent.parent / ".email-cache" / f"{safe_email}_all"
+        index_file = checkpoint_dir / "index.json"
+
+        if index_file.exists():
+            try:
+                with open(index_file, 'r') as f:
+                    checkpoint_count = len(json.load(f))
+
+                if checkpoint_count > len(emails_dict):
+                    logger.info(
+                        f"Checkpoint has {checkpoint_count} emails vs sync state "
+                        f"{len(emails_dict)} for {email}, recovering..."
+                    )
+                    # Load checkpoint batch files
+                    batch_files = sorted(checkpoint_dir.glob("batch_*.jsonl"))
+                    checkpoint_emails = []
+                    for batch_file in batch_files:
+                        with open(batch_file, 'r') as f:
+                            for line in f:
+                                try:
+                                    checkpoint_emails.append(json.loads(line))
+                                except Exception:
+                                    continue
+
+                    # Merge: sync state + checkpoint data
+                    merged = dict(emails_dict)
+                    for em in checkpoint_emails:
+                        email_id = em.get("email_id", "")
+                        if email_id:
+                            merged[email_id] = em
+                    emails_dict = merged
+
+                    # Save merged state to avoid re-merging next time
+                    try:
+                        save_state = {
+                            "history_id": state.get("history_id") or "",
+                            "last_sync_time": state.get("last_sync_time") or datetime.now().isoformat(),
+                            "emails": emails_dict,
+                            "total_synced": len(emails_dict)
+                        }
+                        with open(sync_path, 'w') as f:
+                            json.dump(save_state, f)
+                        logger.info(f"Saved merged sync state: {len(emails_dict)} emails for {email}")
+                    except Exception as e:
+                        logger.warning(f"Could not save merged state: {e}")
+            except Exception:
+                pass
+
+        if emails_dict:
+            return list(emails_dict.values())
         return []
