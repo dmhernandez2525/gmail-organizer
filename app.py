@@ -199,6 +199,36 @@ def render_sidebar():
                     except Exception as e:
                         st.error(f"Authentication failed: {e}")
 
+        with st.expander("Setup Guide"):
+            st.markdown("""
+**First-time setup (unverified app):**
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project (or select existing)
+3. Enable the **Gmail API**:
+   - APIs & Services > Library > search "Gmail API" > Enable
+4. Configure **OAuth consent screen**:
+   - APIs & Services > OAuth consent screen
+   - User Type: **External**
+   - Fill in app name, support email
+   - Add scopes: `gmail.readonly`, `gmail.modify`, `gmail.settings.basic`
+   - **Add test users**: enter the Gmail addresses you want to connect
+   - [Direct link to consent screen](https://console.cloud.google.com/apis/credentials/consent)
+5. Create **OAuth credentials**:
+   - APIs & Services > Credentials > Create Credentials > OAuth client ID
+   - Application type: **Desktop app**
+   - Download the JSON and save as `client_secret.json` in the project root
+6. Enter an account name above and click Authenticate
+   - A browser window will open for Google sign-in
+   - You'll see a warning ("app not verified") - click Advanced > Go to app
+   - Grant the requested permissions
+
+**Adding more accounts:**
+- Go to the [OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent) > Test users
+- Add the new Gmail address to the test users list
+- Then authenticate the new account here
+""")
+
         # Remove account
         if accounts and len(accounts) > 0:
             st.markdown("---")
