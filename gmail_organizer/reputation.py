@@ -126,11 +126,11 @@ class SenderReputation:
         sender_first_seen: Dict[str, Tuple[datetime, str, int]] = {}
 
         for email in emails:
-            sender_email = self._extract_email(email.get("from", ""))
+            sender_email = self._extract_email(email.get("sender", email.get("from", "")))
             if not sender_email:
                 continue
 
-            sender_name = self._extract_name(email.get("from", ""))
+            sender_name = self._extract_name(email.get("sender", email.get("from", "")))
             email_date = self._parse_date(email.get("date", ""))
             if not email_date:
                 continue
@@ -272,13 +272,13 @@ class SenderReputation:
         sender_data: Dict[str, Dict] = {}
 
         for email in emails:
-            sender_email = self._extract_email(email.get("from", ""))
+            sender_email = self._extract_email(email.get("sender", email.get("from", "")))
             if not sender_email:
                 continue
 
             if sender_email not in sender_data:
                 sender_data[sender_email] = {
-                    "sender_name": self._extract_name(email.get("from", "")),
+                    "sender_name": self._extract_name(email.get("sender", email.get("from", ""))),
                     "emails": [],
                     "dates": [],
                     "replied_count": 0,
@@ -323,7 +323,7 @@ class SenderReputation:
         Looks at emails where the from field matches user_email.
         """
         for email in emails:
-            from_email = self._extract_email(email.get("from", ""))
+            from_email = self._extract_email(email.get("sender", email.get("from", "")))
             if from_email and from_email.lower() == user_email.lower():
                 to_field = email.get("to", "")
                 to_emails = self._extract_all_emails(to_field)

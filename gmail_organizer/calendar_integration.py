@@ -194,7 +194,7 @@ class EmailCalendar:
         new_events = []
 
         for email in emails:
-            email_id = email.get("id", "")
+            email_id = email.get("email_id", "")
             if email_id in self._processed_email_ids:
                 continue
 
