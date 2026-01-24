@@ -3309,8 +3309,9 @@ def multi_label_tab():
 
             st.subheader(f"Results ({len(filtered_results)})")
 
+            email_lookup = {e.get('email_id'): e for e in emails}
             for i, result in enumerate(filtered_results[:50]):
-                email = emails[i] if i < len(emails) else {}
+                email = email_lookup.get(result.email_id, {})
                 subject = email.get('subject', '(no subject)')[:50]
                 labels_str = ", ".join(
                     f"{la.label} ({la.confidence:.0%})" for la in result.labels[:3]
@@ -3449,8 +3450,9 @@ def training_tab():
                 if cat_filter != "All":
                     filtered_results = [r for r in results if r.predicted_category == cat_filter]
 
+                email_lookup = {e.get('email_id'): e for e in emails}
                 for i, result in enumerate(filtered_results[:30]):
-                    email = emails[i] if i < len(emails) else {}
+                    email = email_lookup.get(result.email_id, {})
                     subject = email.get('subject', '')[:40]
                     with st.expander(
                         f"[{result.predicted_category}] ({result.confidence:.0%}) {subject}"

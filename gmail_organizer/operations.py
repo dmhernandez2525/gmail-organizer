@@ -163,7 +163,7 @@ class GmailOperations:
             state["total_synced"] = len(merged)
             # Save the merged state so we don't have to merge again next time
             self._save_sync_state(
-                state.get("history_id", ""),
+                state.get("history_id") or "",
                 merged,
                 state.get("last_sync_time")
             )
