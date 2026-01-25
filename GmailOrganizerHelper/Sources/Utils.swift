@@ -107,8 +107,9 @@ func launchClaudeCodeWithPromptFile(at directory: String, promptFile: String, mo
     let escaped = prompt.replacingOccurrences(of: "\"", with: "\\\"")
 
     // Use full path to claude since AppleScript Terminal may not have full PATH
+    // Use --dangerously-skip-permissions to auto-approve file/bash operations
     let claudePath = NSString(string: "~/.local/bin/claude").expandingTildeInPath
-    let command = "cd '\(directory)' && '\(claudePath)' --model \(model) -p \"\(escaped)\""
+    let command = "cd '\(directory)' && '\(claudePath)' --model \(model) --dangerously-skip-permissions -p \"\(escaped)\""
 
     // AppleScript that creates Terminal window centered on the main screen
     let script = """
@@ -174,6 +175,7 @@ func launchClaudeCodeWithPromptFile(at directory: String, promptFile: String, mo
         echo "============================================================"
         echo ""
 
+        # Run claude with auto-approval for file operations
         \(command)
 
         echo ""

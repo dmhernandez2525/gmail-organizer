@@ -37,12 +37,22 @@ struct PromptTemplates {
         RESULTS OUTPUT: \(resultsPath)
 
         ================================================================================
-        IMPORTANT: READ THIS ENTIRE PROMPT BEFORE STARTING
+        CRITICAL: EXECUTE AUTOMATICALLY - DO NOT ASK FOR PERMISSION
         ================================================================================
+
+        IMPORTANT INSTRUCTIONS:
+        1. DO NOT ask for permission to run Python scripts - just run them
+        2. DO NOT ask for confirmation before proceeding - execute each phase
+        3. DO NOT stop to ask if the user wants to continue - keep going
+        4. The user has already authorized this analysis by launching it
+        5. Execute ALL phases automatically from start to finish
+        6. Only pause if you encounter an actual error
 
         You are an expert email analyst. Your task is to thoroughly analyze this Gmail
         inbox and provide actionable insights. This is NOT just about labeling - it's
         about understanding the email ecosystem of this account.
+
+        EXECUTION MODE: FULLY AUTOMATIC - proceed through all phases without stopping.
 
         ================================================================================
         PHASE 1: DATA EXTRACTION & VALIDATION
