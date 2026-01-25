@@ -159,7 +159,34 @@ Detect and manage newsletter/marketing subscriptions:
 - **Status Tracking**: Track which subscriptions you've already unsubscribed from
 - **Smart Filtering**: Filter by frequency, unsubscribe availability, or status
 
-### 7. Smart Filters
+### 8. macOS Native Helper App (NEW)
+
+A native Swift menubar application for streamlined email processing:
+
+**Features:**
+- **Menubar access** - Always one click away
+- **Parallel processing** - 9 specialized AI workers run simultaneously
+- **Embedded terminals** - All worker output in tabbed, color-coded views
+- **Cost-optimized** - Haiku for data gathering, Sonnet for decisions
+- **Comprehensive analysis** - Thread mapping, sender reputation, temporal patterns
+
+**Worker Architecture:**
+| Phase | Workers | Model | Task |
+|-------|---------|-------|------|
+| 1 | Data Indexer | Haiku | Create email indexes |
+| 2-6 | Analyzers (5 types) | Haiku | Threads, senders, time, content, anomalies |
+| 7-9 | Decision makers | Sonnet | Categorize, label, summarize |
+
+**Building:**
+```bash
+cd GmailOrganizerHelper
+./build.sh
+open ~/Desktop/Gmail\ Organizer\ Helper.app
+```
+
+See [GmailOrganizerHelper/README.md](GmailOrganizerHelper/README.md) for full documentation.
+
+### 9. Smart Filters
 
 Automatically discover email patterns and create Gmail filters:
 
@@ -309,6 +336,19 @@ gmail-organizer/
 │   ├── config.py             # Category definitions
 │   ├── logger.py             # Logging configuration
 │   └── main.py               # CLI entry point
+├── GmailOrganizerHelper/     # Native macOS menubar app (Swift)
+│   ├── Sources/              # Swift source files
+│   │   ├── main.swift        # App entry point
+│   │   ├── AppDelegate.swift # NSApplication delegate
+│   │   ├── MainPanel.swift   # Main UI (5-tab layout)
+│   │   ├── ProcessingPanel.swift  # Parallel processing window
+│   │   ├── EmbeddedTerminal.swift # Tabbed terminal container
+│   │   ├── WorkerManager.swift    # Parallel job orchestration
+│   │   ├── PromptTemplates.swift  # AI analysis prompts
+│   │   └── Utils.swift       # Helpers and utilities
+│   ├── build.sh              # Build script
+│   ├── entitlements.plist    # macOS permissions
+│   └── README.md             # Helper app documentation
 ├── scripts/                  # Launcher scripts
 │   ├── launch_gmail_organizer.sh
 │   └── GmailOrganizer.applescript
@@ -471,6 +511,10 @@ The email processing runs locally on your machine for privacy. Clone the repo an
 - [x] **5-Tab Dashboard UI** - Dashboard, Analyze, Process, Results, Settings
 - [x] **Smart Filters** - Auto-generate Gmail filters from sender/domain/subject patterns with bulk create and preview
 - [x] **Analytics Dashboard** - Email volume over time, hourly/weekly patterns, sender/domain breakdown, inbox growth charts
+- [x] **macOS Native Helper App** - Swift menubar app with parallel multi-worker processing
+- [x] **Parallel Worker Architecture** - Haiku + Sonnet workers for cost-effective, fast processing
+- [x] **Embedded Terminals** - All worker output in organized, tabbed interface
+- [x] **Comprehensive Analysis** - 10-phase analysis with thread mapping, sender reputation, temporal patterns
 - [ ] **Mobile Companion** - iOS/Android notification app
 - [ ] **Calendar Integration** - Auto-schedule from email context
 

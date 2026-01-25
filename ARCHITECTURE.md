@@ -282,3 +282,253 @@ All access to `_statuses` and `_services` dicts goes through `self._lock`. The S
 | 120s initial quota wait | Removed (unnecessary) |
 | 10s batch delay | 2s batch delay (safe, faster) |
 | Metadata-only fetch | Full email fetch (body included) |
+
+---
+
+## macOS Native Helper App Architecture
+
+### Overview
+
+The Gmail Organizer Helper is a native Swift macOS application that provides a menubar interface for email processing. It uses a parallel multi-worker architecture for efficient, cost-effective AI analysis.
+
+### System Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Gmail Organizer Helper (Swift)                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌────────────┐      ┌─────────────────────────────────────────────┐   │
+│  │  Menubar   │      │              MainPanel                       │   │
+│  │   Icon     │─────▶│  ┌─────┬────────┬────────┬──────┬────────┐  │   │
+│  │    ✉️      │      │  │Home │Process │Results │Auto  │Settings│  │   │
+│  └────────────┘      │  └─────┴────────┴────────┴──────┴────────┘  │   │
+│                      │           │                                   │   │
+│                      │    ┌──────┴──────┐                           │   │
+│                      │    ▼             ▼                           │   │
+│                      │  Single       Parallel                        │   │
+│                      │  Thread       Processing                      │   │
+│                      └─────────────────────────────────────────────┘   │
+│                                         │                               │
+│                            ┌────────────┴────────────┐                 │
+│                            ▼                         ▼                 │
+│  ┌────────────────────────────────┐  ┌────────────────────────────┐   │
+│  │     ProcessingPanel             │  │      Terminal.app          │   │
+│  │  ┌───────────────────────────┐ │  │   (Single Thread Mode)     │   │
+│  │  │    TabbedTerminalView     │ │  └────────────────────────────┘   │
+│  │  │  ┌────┬────┬────┬────┐   │ │                                    │
+│  │  │  │ W1 │ W2 │ W3 │ W4 │   │ │                                    │
+│  │  │  └────┴────┴────┴────┘   │ │                                    │
+│  │  │  Color-coded tabs         │ │                                    │
+│  │  └───────────────────────────┘ │                                    │
+│  │  ┌───────────────────────────┐ │                                    │
+│  │  │    Status Sidebar         │ │                                    │
+│  │  │  Progress: ████████░░ 80% │ │                                    │
+│  │  │  Workers:                 │ │                                    │
+│  │  │  ● Indexer     [Done]    │ │                                    │
+│  │  │  ● Threads     [Running] │ │                                    │
+│  │  │  ○ Sender      [Pending] │ │                                    │
+│  │  └───────────────────────────┘ │                                    │
+│  └────────────────────────────────┘                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           WorkerManager                                   │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                         ProcessingJob                               │  │
+│  │  • id, accountEmail, accountName                                   │  │
+│  │  • syncStatePath, resultsDir, totalEmails                          │  │
+│  │  • workers: [WorkerInfo]                                           │  │
+│  │  • onWorkerStatusChanged, onJobComplete                            │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                      │
+│       ┌────────────────────────────┼────────────────────────────┐        │
+│       │            │               │               │            │        │
+│       ▼            ▼               ▼               ▼            ▼        │
+│  ┌─────────┐ ┌─────────┐    ┌─────────┐    ┌─────────┐   ┌─────────┐   │
+│  │Worker 1 │ │Worker 2 │    │Worker 3 │    │Worker 4 │   │Worker 9 │   │
+│  │ Haiku   │ │ Haiku   │    │ Haiku   │    │ Haiku   │   │ Sonnet  │   │
+│  │Indexer  │ │Threads  │    │Sender   │    │Temporal │   │Summary  │   │
+│  └────┬────┘ └────┬────┘    └────┬────┘    └────┬────┘   └────┬────┘   │
+│       │           │              │              │              │        │
+│       └───────────┴──────────────┴──────────────┴──────────────┘        │
+│                                    │                                      │
+│                          ┌─────────┴─────────┐                           │
+│                          ▼                   ▼                           │
+│                   ┌────────────┐      ┌────────────┐                    │
+│                   │Claude Haiku│      │Claude      │                    │
+│                   │ (cheap)    │      │Sonnet      │                    │
+│                   │~80% of work│      │(reasoning) │                    │
+│                   └────────────┘      └────────────┘                    │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                            Data Layer                                     │
+│                                                                           │
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌──────────────────┐ │
+│  │    .sync-state/     │  │    .processing/     │  │.processing-      │ │
+│  │                     │  │                     │  │  results/        │ │
+│  │ sync_state_         │  │ {account}/          │  │                  │ │
+│  │  {email}.json       │  │  01_indexer.md      │  │ {email}_         │ │
+│  │                     │  │  02_thread_0.md     │  │  latest.json     │ │
+│  │ • Full email DB     │  │  03_sender.md       │  │                  │ │
+│  │ • Gmail historyId   │  │  ...                │  │ • Thread analysis│ │
+│  │ • Last sync time    │  │                     │  │ • Sender scores  │ │
+│  │                     │  │ (Worker prompts)    │  │ • Health score   │ │
+│  └─────────────────────┘  └─────────────────────┘  └──────────────────┘ │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Helper App Components
+
+#### MainPanelController (`MainPanel.swift`)
+
+Main window with Google-style UI:
+- **Navigation sidebar** - 5 tabs with icons
+- **Content area** - Tab-specific content
+- **Account cards** - Show sync status, email counts
+- **Parallel processing toggle** - Switch between modes
+
+**Key properties:**
+- `accounts: [AccountInfo]` - Discovered Gmail accounts
+- `selectedAnalysisType: AnalysisType` - Current analysis mode
+- `useParallelProcessing: Bool` - Processing mode toggle
+- `accountsLoaded: Bool` - Deferred loading for permissions
+
+#### ProcessingPanelController (`ProcessingPanel.swift`)
+
+Dedicated window for parallel processing:
+- **Header** - Account info, stop button
+- **Status sidebar** - Progress bar, worker list
+- **Terminal container** - Tabbed terminal views
+
+#### TabbedTerminalView (`EmbeddedTerminal.swift`)
+
+Container for multiple terminal outputs:
+- **Tab bar** - Color-coded worker tabs
+- **Content area** - Active terminal view
+- **Status indicators** - Per-tab running/complete status
+
+**Tab colors by phase:**
+```swift
+static let tabColors: [NSColor] = [
+    .systemBlue,    // Phase 1
+    .systemGreen,   // Phase 2
+    .systemOrange,  // Phase 3
+    .systemPurple,  // Phase 4
+    .systemPink,    // Phase 5
+    .systemTeal,    // Phase 6
+    .systemYellow,  // Phase 7
+    .systemIndigo   // Phase 8-9
+]
+```
+
+#### TerminalOutputView (`EmbeddedTerminal.swift`)
+
+Individual terminal display:
+- **Process management** - Runs shell commands
+- **Output display** - Monospace text with colors
+- **Auto-scroll** - Follows output
+- **Callbacks** - `onProcessComplete`, `onOutputReceived`
+
+#### WorkerManager (`WorkerManager.swift`)
+
+Orchestrates parallel processing jobs:
+
+**ProcessingJob:**
+- Tracks account being processed
+- Manages worker list and status
+- Collects results from all workers
+
+**Worker types:**
+| ID | Name | Phase | Model | Purpose |
+|----|------|-------|-------|---------|
+| `indexer` | Data Indexer | 1 | Haiku | Create indexes |
+| `thread_N` | Thread Analyzer N | 2 | Haiku | Map conversations |
+| `sender` | Sender Analyzer | 3 | Haiku | Reputation scoring |
+| `temporal` | Temporal Analyzer | 4 | Haiku | Time patterns |
+| `content` | Content Analyzer | 5 | Haiku | Topics, actions |
+| `anomaly` | Anomaly Detector | 6 | Haiku | Find issues |
+| `categorizer` | Smart Categorizer | 7 | Sonnet | Aggregate, categorize |
+| `executor` | Label Executor | 8 | Sonnet | Apply Gmail labels |
+| `summary` | Summary Generator | 9 | Sonnet | Executive summary |
+
+**Concurrency model:**
+```swift
+// Max workers = CPU cores - 2 (leave headroom)
+let cores = ProcessInfo.processInfo.activeProcessorCount
+self.maxConcurrentWorkers = max(2, cores - 2)
+```
+
+### Data Flow (Parallel Processing)
+
+```
+User clicks "Process" with Parallel toggle ON
+                    │
+                    ▼
+        ProcessingPanelController
+                    │
+                    ▼
+   WorkerManager.createJob(account)
+                    │
+   ┌────────────────┼────────────────┐
+   │                │                │
+   ▼                ▼                ▼
+Worker 1        Worker 2         Worker N
+(Haiku)         (Haiku)          (Sonnet)
+   │                │                │
+   ▼                ▼                ▼
+.processing/    .processing/    .processing/
+01_indexer.md   02_thread.md    09_summary.md
+   │                │                │
+   ▼                ▼                ▼
+Claude Code     Claude Code     Claude Code
+--model haiku   --model haiku   --model sonnet
+   │                │                │
+   └────────────────┼────────────────┘
+                    │
+                    ▼
+           .processing-results/
+           {email}_latest.json
+```
+
+### Cost Optimization
+
+The parallel architecture optimizes costs by using:
+
+| Model | Cost | Used For | % of Work |
+|-------|------|----------|-----------|
+| Haiku | $0.25/1M input | Data gathering, analysis | ~80% |
+| Sonnet | $3/1M input | Decision making, labeling | ~20% |
+
+**Estimated cost per inbox:**
+- 1,000 emails: ~$0.02
+- 10,000 emails: ~$0.15
+- 100,000 emails: ~$1.20
+
+### File Persistence
+
+| File | Purpose | Created By | Read By |
+|------|---------|------------|---------|
+| `.sync-state/sync_state_{email}.json` | Email database | Web app | Helper app |
+| `.processing/{account}/XX_worker.md` | Worker prompts | Helper app | Claude Code |
+| `.processing-results/{email}_latest.json` | Analysis results | Claude Code | Both apps |
+
+### Thread Safety
+
+The Helper app uses different threading models:
+
+**Single-thread mode:**
+- Launches Terminal.app with AppleScript
+- Uses fallback shell script if AppleScript fails
+- Window positioned center-screen
+
+**Parallel mode:**
+- `WorkerManager` tracks active workers
+- `maxConcurrentWorkers` limits parallelism
+- UI updates via main thread callbacks
+- Each `TerminalOutputView` has its own Process

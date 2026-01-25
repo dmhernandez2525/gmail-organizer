@@ -28,7 +28,8 @@ import {
   ListChecks,
   AlertTriangle,
   Copy,
-  ShieldAlert
+  ShieldAlert,
+  Monitor
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -361,6 +362,12 @@ function FeaturesSection() {
       title: 'Unsubscribe Manager',
       description: 'Detect newsletters and marketing subscriptions automatically. View frequency stats and unsubscribe with one click via List-Unsubscribe headers.',
       color: 'from-red-500 to-red-600'
+    },
+    {
+      icon: Monitor,
+      title: 'macOS Native App',
+      description: 'Swift menubar app with parallel AI workers. 9 specialized workers (Haiku for data gathering, Sonnet for decisions) run simultaneously with embedded tabbed terminals.',
+      color: 'from-gray-600 to-gray-700'
     }
   ]
 
@@ -625,6 +632,12 @@ function RoadmapSection() {
       title: 'Analytics Dashboard',
       description: 'Comprehensive email analytics with interactive charts and insights',
       items: ['Volume over time (daily/weekly/monthly)', 'Hourly & day-of-week patterns', 'Top senders & domains ranking', 'Inbox growth curves', 'Sent vs received ratios']
+    },
+    {
+      status: 'completed',
+      title: 'macOS Native Helper App',
+      description: 'Swift menubar app with parallel multi-worker AI processing',
+      items: ['Menubar access', 'Parallel Haiku workers for data gathering', 'Sonnet for decision making', 'Embedded tabbed terminals', '10-phase comprehensive analysis', 'Thread mapping & sender reputation']
     },
     {
       status: 'planned',

@@ -52,3 +52,7 @@ research/
 # Node (website)
 website/node_modules/
 website/dist/
+
+# Processing results
+.processing-results/
+.processing/
