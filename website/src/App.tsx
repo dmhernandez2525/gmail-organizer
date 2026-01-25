@@ -631,6 +631,12 @@ function RoadmapSection() {
       title: 'Mobile Companion',
       description: 'Quick classification on the go with a mobile-optimized interface',
       items: ['Quick actions', 'Push notifications', 'Swipe gestures']
+    },
+    {
+      status: 'planned',
+      title: 'Voice Email Triage (PersonaPlex)',
+      description: 'Hands-free email management powered by NVIDIA\'s full duplex AI',
+      items: ['Natural voice conversation', 'AI reads summaries aloud', 'Voice commands: "Archive", "Star", "Move to..."', '<500ms response time', 'Runs 100% locally']
     }
   ]
 

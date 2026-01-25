@@ -178,6 +178,52 @@ Automatically discover email patterns and create Gmail filters:
 4. Preview matched emails for each filter
 5. Create individually or in bulk
 
+---
+
+## 🎤 Coming Soon: Voice Email Triage (PersonaPlex Integration)
+
+We're integrating NVIDIA's **PersonaPlex** - an open-source full duplex conversational AI - to enable hands-free email management through natural voice conversation.
+
+### How It Will Work
+
+```
+PersonaPlex: "You have 47 new emails. 3 are urgent. Want me to read the subjects?"
+You: "Yeah, what are the urgent ones?"
+PersonaPlex: "First one from your bank about a suspicious transaction..."
+You: "Archive that, it's a false alarm"
+PersonaPlex: "Done. Second one from Sarah at Acme Corp about the interview..."
+You: "Star that and move to Job Interviews"
+PersonaPlex: "Starred and labeled. Third one is from AWS about your bill being due..."
+You: "Archive it, I already paid"
+PersonaPlex: "Archived. Want me to continue with the rest?"
+```
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Voice Triage** | Quickly process emails by speaking decisions |
+| **Smart Summaries** | AI reads key details, not entire emails |
+| **Batch Actions** | "Archive all newsletters from this week" |
+| **Full Duplex** | Natural interruption - change your mind mid-sentence |
+| **Hands-Free** | Perfect while commuting, cooking, or exercising |
+| **Local Processing** | PersonaPlex runs on-device, your emails stay private |
+
+### Hardware Requirements
+
+- Mac with 24GB+ unified memory (M2 Max recommended)
+- PersonaPlex server runs 100% locally
+
+### Current vs PersonaPlex
+
+| Task | Current | With PersonaPlex |
+|------|---------|------------------|
+| Review 50 emails | ~15 minutes clicking | ~5 minutes talking |
+| Triage urgent items | Manual search and scan | "Show me urgent emails" |
+| Bulk organize | Multi-step batch operations | "Archive all from Amazon" |
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
