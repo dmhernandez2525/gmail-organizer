@@ -215,6 +215,16 @@ class PriorityScorer:
 
         return 0.3  # Neutral
 
+    # Recency score thresholds: (max_days, score)
+    _RECENCY_TIERS = [
+        (0, 1.0),
+        (1, 0.9),
+        (3, 0.7),
+        (7, 0.5),
+        (14, 0.3),
+        (30, 0.1),
+    ]
+
     def _recency_score(self, date_str: str) -> float:
         """Score recency (1.0 = today, 0.0 = 30+ days ago)"""
         if not date_str:
@@ -222,20 +232,10 @@ class PriorityScorer:
         try:
             dt = parsedate_to_datetime(date_str).replace(tzinfo=None)
             days_ago = (datetime.now() - dt).days
-            if days_ago <= 0:
-                return 1.0
-            elif days_ago <= 1:
-                return 0.9
-            elif days_ago <= 3:
-                return 0.7
-            elif days_ago <= 7:
-                return 0.5
-            elif days_ago <= 14:
-                return 0.3
-            elif days_ago <= 30:
-                return 0.1
-            else:
-                return 0.0
+            for max_days, score in self._RECENCY_TIERS:
+                if days_ago <= max_days:
+                    return score
+            return 0.0
         except Exception:
             return 0.0
 
