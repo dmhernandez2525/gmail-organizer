@@ -432,6 +432,16 @@ class SenderReputation:
         # 100% pass = 100 score, 0% pass = 0 score
         return pass_rate * 100.0
 
+    # Age score tiers: (max_days, base_score, multiplier, offset)
+    # Score = base_score + (age_days - offset) * multiplier
+    _AGE_SCORE_TIERS = [
+        (0, 10.0, 0, 0),       # age_days <= 0: return 10.0
+        (7, 20.0, 3.0, 0),     # age_days < 7: return 20.0 + age_days * 3.0
+        (30, 40.0, 1.5, 7),    # age_days < 30: return 40.0 + (age_days - 7) * 1.5
+        (90, 75.0, 0.3, 30),   # age_days < 90: return 75.0 + (age_days - 30) * 0.3
+        (365, 90.0, 0.02, 90), # age_days < 365: return 90.0 + min(5.0, (age_days - 90) * 0.02)
+    ]
+
     def _score_relationship_age(self, first_seen: Optional[datetime]) -> float:
         """
         Score based on how long the sender has been known.
@@ -442,18 +452,14 @@ class SenderReputation:
 
         age_days = (datetime.now() - first_seen).days
 
-        if age_days <= 0:
-            return 10.0
-        elif age_days < 7:
-            return 20.0 + age_days * 3.0
-        elif age_days < 30:
-            return 40.0 + (age_days - 7) * 1.5
-        elif age_days < 90:
-            return 75.0 + (age_days - 30) * 0.3
-        elif age_days < 365:
-            return 90.0 + min(5.0, (age_days - 90) * 0.02)
-        else:
-            return 100.0
+        for max_days, base, mult, offset in self._AGE_SCORE_TIERS:
+            if age_days <= max_days if max_days == 0 else age_days < max_days:
+                score = base + (age_days - offset) * mult
+                # Cap the 365-day tier at 5.0 additional points
+                if max_days == 365:
+                    score = base + min(5.0, (age_days - offset) * mult)
+                return score
+        return 100.0
 
     def _score_read_rate(self, read_rate: float) -> float:
         """

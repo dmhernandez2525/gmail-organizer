@@ -1659,30 +1659,29 @@ def unsubscribe_tab():
     with col3:
         min_emails = st.slider("Min emails", 1, 50, 3, key="unsub_min")
 
-    # Filter subscriptions
-    filtered = subscriptions
-    if show_filter == "All Active":
-        filtered = [s for s in filtered if not s.unsubscribed]
-    elif show_filter == "With Unsubscribe Link":
-        filtered = [s for s in filtered if s.has_unsubscribe and not s.unsubscribed]
-    elif show_filter == "High Frequency (5+/week)":
-        filtered = [s for s in filtered if s.emails_per_week >= 5 and not s.unsubscribed]
-    elif show_filter == "Already Unsubscribed":
-        filtered = [s for s in filtered if s.unsubscribed]
-
+    # Filter subscriptions using lookup table
+    filter_predicates = {
+        "All Active": lambda s: not s.unsubscribed,
+        "With Unsubscribe Link": lambda s: s.has_unsubscribe and not s.unsubscribed,
+        "High Frequency (5+/week)": lambda s: s.emails_per_week >= 5 and not s.unsubscribed,
+        "Already Unsubscribed": lambda s: s.unsubscribed,
+    }
+    predicate = filter_predicates.get(show_filter)
+    filtered = [s for s in subscriptions if (predicate(s) if predicate else True)]
     filtered = [s for s in filtered if s.frequency >= min_emails]
 
-    # Sort
-    if sort_by == "Frequency (Most)":
-        filtered.sort(key=lambda s: s.frequency, reverse=True)
-    elif sort_by == "Frequency (Least)":
-        filtered.sort(key=lambda s: s.frequency)
-    elif sort_by == "Recent First":
-        filtered.sort(key=lambda s: s.last_received or "", reverse=True)
-    elif sort_by == "Oldest First":
-        filtered.sort(key=lambda s: s.first_received or "")
-    elif sort_by == "Emails/Week":
-        filtered.sort(key=lambda s: s.emails_per_week, reverse=True)
+    # Sort using lookup table
+    sort_configs = {
+        "Frequency (Most)": (lambda s: s.frequency, True),
+        "Frequency (Least)": (lambda s: s.frequency, False),
+        "Recent First": (lambda s: s.last_received or "", True),
+        "Oldest First": (lambda s: s.first_received or "", False),
+        "Emails/Week": (lambda s: s.emails_per_week, True),
+    }
+    sort_config = sort_configs.get(sort_by)
+    if sort_config:
+        key_fn, reverse = sort_config
+        filtered.sort(key=key_fn, reverse=reverse)
 
     st.caption(f"Showing {len(filtered)} subscriptions")
 
