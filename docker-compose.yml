@@ -1,0 +1,64 @@
+name: gmail-organizer
+
+# Gmail Organizer - Docker Compose
+# Run with: docker-compose up -d
+
+services:
+  gmail-organizer:
+    build: .
+    container_name: gmail-organizer
+    ports:
+      - "8501:8501"
+    volumes:
+      # OAuth credentials (must exist before running)
+      - ./credentials:/app/credentials
+      # Client secret for Google OAuth
+      - ./client_secret.json:/app/client_secret.json:ro
+      # Email cache for performance
+      - ./.email-cache:/app/.email-cache
+      # Logs directory
+      - ./logs:/app/logs
+      # Streamlit config
+      - ./.streamlit:/app/.streamlit:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Anthropic API key for AI classification
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Streamlit settings
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Optional: Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: gmail-organizer-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    profiles:
+      - with-cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  default:
+    name: gmail-organizer-network
+    driver: bridge
