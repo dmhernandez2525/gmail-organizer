@@ -1,5 +1,6 @@
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Mail,
   Zap,
@@ -101,8 +102,10 @@ function Navigation() {
                 GitHub
               </a>
             </Button>
-            <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700">
-              Get Started
+            <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700" asChild>
+              <Link to="/sign-in">
+                Get Started
+              </Link>
             </Button>
           </div>
 

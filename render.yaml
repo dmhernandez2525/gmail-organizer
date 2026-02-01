@@ -43,3 +43,6 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      # Demo mode - enables the app without real Gmail authentication
+      - key: VITE_DEMO_MODE
+        value: "true"
