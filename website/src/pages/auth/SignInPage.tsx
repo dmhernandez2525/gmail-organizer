@@ -39,9 +39,9 @@ export default function SignInPage() {
     };
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background hero-gradient grid-pattern p-4">
+      <div className="min-h-screen flex items-center justify-center bg-background hero-gradient grid-pattern p-3 sm:p-4">
         <div className="max-w-2xl w-full">
-          <div className="glass-card rounded-2xl p-8 glow-purple">
+          <div className="glass-card rounded-2xl p-5 sm:p-8 glow-purple">
             <div className="text-center mb-8">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/20 border border-purple-500/40 mb-4">
                 <Eye className="w-4 h-4 text-purple-400" />
@@ -50,7 +50,7 @@ export default function SignInPage() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
                 <Mail className="w-8 h-8 text-white" />
               </div>
-              <h1 className="text-3xl font-bold mb-2">
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
                 Welcome to <span className="gradient-text">Gmail Organizer</span>
               </h1>
               <p className="text-muted-foreground">

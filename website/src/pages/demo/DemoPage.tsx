@@ -85,23 +85,23 @@ export default function DemoPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Demo Banner */}
-      <div className="bg-gradient-to-r from-purple-600 via-purple-500 to-cyan-500 py-2 px-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white text-sm">
-            <Eye className="w-4 h-4" />
-            <span className="font-medium">Demo Mode: {demoUser.role}</span>
+      <div className="bg-gradient-to-r from-purple-600 via-purple-500 to-cyan-500 py-2 px-3 sm:px-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-white text-xs sm:text-sm min-w-0">
+            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+            <span className="font-medium truncate">Demo: {demoUser.role}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             <div className="relative">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-                className="text-white hover:bg-white/20 text-xs h-7"
+                className="text-white hover:bg-white/20 text-xs h-7 px-2 sm:px-3"
               >
-                <ArrowLeftRight className="w-3 h-3 mr-1" />
-                Switch Persona
-                <ChevronDown className="w-3 h-3 ml-1" />
+                <ArrowLeftRight className="w-3 h-3 sm:mr-1" />
+                <span className="hidden sm:inline">Switch Persona</span>
+                <ChevronDown className="w-3 h-3 sm:ml-1" />
               </Button>
               {showRoleSwitcher && (
                 <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
@@ -127,10 +127,10 @@ export default function DemoPage() {
               variant="ghost"
               size="sm"
               onClick={handleExit}
-              className="text-white hover:bg-white/20 text-xs h-7"
+              className="text-white hover:bg-white/20 text-xs h-7 px-2 sm:px-3"
             >
-              <LogOut className="w-3 h-3 mr-1" />
-              Exit Demo
+              <LogOut className="w-3 h-3 sm:mr-1" />
+              <span className="hidden sm:inline">Exit Demo</span>
             </Button>
           </div>
         </div>
@@ -138,15 +138,15 @@ export default function DemoPage() {
 
       {/* Header */}
       <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
-                <Mail className="w-5 h-5 text-white" />
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <div>
-                <h1 className="font-bold text-lg">Gmail Organizer</h1>
-                <p className="text-xs text-muted-foreground">{demoUser.email}</p>
+              <div className="min-w-0">
+                <h1 className="font-bold text-base sm:text-lg">Gmail Organizer</h1>
+                <p className="text-xs text-muted-foreground truncate">{demoUser.email}</p>
               </div>
             </div>
 
@@ -173,9 +173,9 @@ export default function DemoPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-border pb-4">
+        <div className="flex gap-2 mb-4 sm:mb-6 border-b border-border pb-3 sm:pb-4 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
           <Button
             variant={activeTab === 'inbox' ? 'default' : 'ghost'}
             size="sm"
@@ -308,14 +308,14 @@ export default function DemoPage() {
                         ? EMAIL_CATEGORIES.find((c) => c.id === selectedCategory)?.name
                         : 'All Emails'}
                     </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Archive className="w-4 h-4 mr-1" />
-                        Archive
+                    <div className="flex items-center gap-1 sm:gap-2">
+                      <Button variant="ghost" size="sm" className="px-2 sm:px-3">
+                        <Archive className="w-4 h-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Archive</span>
                       </Button>
-                      <Button variant="ghost" size="sm">
-                        <Tag className="w-4 h-4 mr-1" />
-                        Label
+                      <Button variant="ghost" size="sm" className="px-2 sm:px-3">
+                        <Tag className="w-4 h-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Label</span>
                       </Button>
                     </div>
                   </div>
@@ -325,11 +325,11 @@ export default function DemoPage() {
                     {filteredEmails.map((email) => (
                       <div
                         key={email.id}
-                        className={`flex items-start gap-4 p-4 hover:bg-muted/50 cursor-pointer transition-colors ${
+                        className={`flex items-start gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-muted/50 cursor-pointer transition-colors ${
                           !email.isRead ? 'bg-purple-500/5' : ''
                         }`}
                       >
-                        <div className="flex items-center gap-3 pt-1">
+                        <div className="flex items-center gap-2 sm:gap-3 pt-1 flex-shrink-0">
                           <button className="text-muted-foreground hover:text-yellow-400 transition-colors">
                             <Star
                               className={`w-4 h-4 ${email.isStarred ? 'fill-yellow-400 text-yellow-400' : ''}`}
@@ -337,14 +337,14 @@ export default function DemoPage() {
                           </button>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span
-                              className={`font-medium truncate ${!email.isRead ? 'text-foreground' : 'text-muted-foreground'}`}
+                              className={`font-medium truncate text-sm sm:text-base ${!email.isRead ? 'text-foreground' : 'text-muted-foreground'}`}
                             >
                               {email.fromName}
                             </span>
                             <Badge
-                              className="text-xs px-2 py-0"
+                              className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0"
                               style={{
                                 backgroundColor: `${getCategoryColor(email.category)}20`,
                                 color: getCategoryColor(email.category),
@@ -353,24 +353,27 @@ export default function DemoPage() {
                             >
                               {EMAIL_CATEGORIES.find((c) => c.id === email.category)?.name}
                             </Badge>
+                            <span className="text-[10px] sm:hidden text-muted-foreground ml-auto">
+                              {formatRelativeTime(email.date)}
+                            </span>
                           </div>
                           <p
-                            className={`text-sm truncate ${!email.isRead ? 'font-medium' : 'text-muted-foreground'}`}
+                            className={`text-xs sm:text-sm truncate ${!email.isRead ? 'font-medium' : 'text-muted-foreground'}`}
                           >
                             {email.subject}
                           </p>
-                          <p className="text-xs text-muted-foreground truncate mt-1">
+                          <p className="text-xs text-muted-foreground truncate mt-1 hidden sm:block">
                             {email.preview}
                           </p>
-                          <div className="flex items-center gap-2 mt-2">
+                          <div className="flex items-center gap-1 sm:gap-2 mt-2 flex-wrap">
                             {email.labels.map((label, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
+                              <Badge key={i} variant="outline" className="text-[10px] sm:text-xs">
                                 {label}
                               </Badge>
                             ))}
                           </div>
                         </div>
-                        <div className="text-xs text-muted-foreground whitespace-nowrap">
+                        <div className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">
                           {formatRelativeTime(email.date)}
                         </div>
                       </div>
@@ -426,30 +429,30 @@ function AnalyticsTab({ analytics }: { analytics: AnalyticsData }) {
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <Card className="glass-card border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-purple-500/20">
-                <Mail className="w-6 h-6 text-purple-400" />
+          <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-lg bg-purple-500/20 flex-shrink-0">
+                <Mail className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Emails</p>
-                <p className="text-2xl font-bold">{analytics.totalEmails.toLocaleString()}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground">Total Emails</p>
+                <p className="text-xl sm:text-2xl font-bold">{analytics.totalEmails.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="glass-card border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-green-500/20">
-                <CheckCircle2 className="w-6 h-6 text-green-400" />
+          <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-lg bg-green-500/20 flex-shrink-0">
+                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-400" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Categorized</p>
-                <p className="text-2xl font-bold">{analytics.categorized.toLocaleString()}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground">Categorized</p>
+                <p className="text-xl sm:text-2xl font-bold">{analytics.categorized.toLocaleString()}</p>
                 <p className="text-xs text-green-400">
                   {((analytics.categorized / analytics.totalEmails) * 100).toFixed(1)}%
                 </p>
@@ -459,28 +462,28 @@ function AnalyticsTab({ analytics }: { analytics: AnalyticsData }) {
         </Card>
 
         <Card className="glass-card border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-yellow-500/20">
-                <AlertCircle className="w-6 h-6 text-yellow-400" />
+          <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-lg bg-yellow-500/20 flex-shrink-0">
+                <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Uncategorized</p>
-                <p className="text-2xl font-bold">{analytics.uncategorized.toLocaleString()}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground">Uncategorized</p>
+                <p className="text-xl sm:text-2xl font-bold">{analytics.uncategorized.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="glass-card border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-cyan-500/20">
-                <Zap className="w-6 h-6 text-cyan-400" />
+          <CardContent className="pt-4 sm:pt-6 p-4 sm:p-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="p-2 sm:p-3 rounded-lg bg-cyan-500/20 flex-shrink-0">
+                <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Last Sync</p>
-                <p className="text-2xl font-bold">{analytics.syncStats.syncDuration}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground">Last Sync</p>
+                <p className="text-xl sm:text-2xl font-bold">{analytics.syncStats.syncDuration}</p>
                 <p className="text-xs text-cyan-400">Incremental mode</p>
               </div>
             </div>
@@ -558,7 +561,7 @@ function AnalyticsTab({ analytics }: { analytics: AnalyticsData }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {analytics.accounts.map((account, i) => (
                 <div key={i} className="p-4 rounded-lg bg-muted/50 space-y-2">
                   <div className="flex items-center gap-2">
@@ -604,15 +607,15 @@ function FiltersTab() {
             {filters.map((filter) => (
               <div
                 key={filter.id}
-                className="p-4 rounded-xl border border-border hover:border-purple-500/50 transition-colors"
+                className="p-3 sm:p-4 rounded-xl border border-border hover:border-purple-500/50 transition-colors"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-2 flex-1">
-                    <h4 className="font-medium">{filter.name}</h4>
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <h4 className="font-medium text-sm sm:text-base">{filter.name}</h4>
                     <div className="space-y-1">
                       <div className="text-sm">
                         <span className="text-muted-foreground">Criteria: </span>
-                        <code className="text-xs bg-muted px-2 py-1 rounded">
+                        <code className="text-xs bg-muted px-2 py-1 rounded break-all">
                           {filter.criteria}
                         </code>
                       </div>
@@ -622,11 +625,11 @@ function FiltersTab() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right space-y-2">
+                  <div className="flex sm:flex-col items-center sm:items-end gap-2 sm:text-right">
                     <Badge className="bg-purple-500/20 text-purple-400 border-0">
                       {filter.matchCount} matches
                     </Badge>
-                    <Button size="sm" className="block w-full">
+                    <Button size="sm" className="flex-shrink-0">
                       Create Filter
                     </Button>
                   </div>
@@ -646,7 +649,7 @@ function FiltersTab() {
             Gmail Organizer analyzes your classified emails to detect common patterns from senders,
             domains, and subject lines.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 rounded-lg bg-muted/50">
               <Tag className="w-5 h-5 text-purple-400 mb-2" />
               <h4 className="font-medium text-foreground">Pattern Detection</h4>

@@ -6,6 +6,7 @@ import App from './App.tsx';
 import SignInPage from './pages/auth/SignInPage.tsx';
 import DemoLayout from './pages/demo/DemoLayout.tsx';
 import DemoPage from './pages/demo/DemoPage.tsx';
+import BottomNav from './components/BottomNav.tsx';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
           }
         />
       </Routes>
+      <BottomNav />
     </BrowserRouter>
   </StrictMode>
 );
