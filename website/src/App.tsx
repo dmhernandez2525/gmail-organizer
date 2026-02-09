@@ -173,7 +173,7 @@ function HeroSection() {
 
           <motion.h1
             variants={fadeInUp}
-            className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6"
+            className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6"
           >
             Organize Your{' '}
             <span className="gradient-text">Gmail</span>
@@ -183,21 +183,21 @@ function HeroSection() {
 
           <motion.p
             variants={fadeInUp}
-            className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto leading-relaxed"
+            className="text-lg sm:text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto leading-relaxed px-2"
           >
             Automatically categorize and organize thousands of emails across multiple Gmail accounts.
             Smart sync fetches only new emails in seconds.
           </motion.p>
 
-          <motion.div variants={fadeInUp} className="flex flex-wrap gap-4 justify-center mb-16">
-            <Button size="lg" className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-lg px-8 py-6" asChild>
+          <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center mb-16 px-4 sm:px-0">
+            <Button size="lg" className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 w-full sm:w-auto" asChild>
               <a href="https://github.com/dmhernandez2525/gmail-organizer" target="_blank" rel="noopener noreferrer">
                 <Github className="mr-2 h-5 w-5" />
                 Clone Repository
                 <ArrowRight className="ml-2 h-5 w-5" />
               </a>
             </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-purple-500/30 hover:bg-purple-500/10" asChild>
+            <Button size="lg" variant="outline" className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 border-purple-500/30 hover:bg-purple-500/10 w-full sm:w-auto" asChild>
               <a href="#docs">
                 <Terminal className="mr-2 h-5 w-5" />
                 View Documentation
@@ -226,7 +226,7 @@ function HeroSection() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1 }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+        className="absolute bottom-20 md:bottom-8 left-1/2 -translate-x-1/2"
       >
         <motion.div
           animate={{ y: [0, 10, 0] }}
@@ -269,7 +269,7 @@ function StatsSection() {
               <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500/10 to-cyan-500/10 flex items-center justify-center ${stat.color}`}>
                 <stat.icon className="w-8 h-8" />
               </div>
-              <div className="text-4xl md:text-5xl font-bold mb-2 stat-value">{stat.value}</div>
+              <div className="text-2xl sm:text-4xl md:text-5xl font-bold mb-2 stat-value">{stat.value}</div>
               <div className="text-muted-foreground">{stat.label}</div>
             </motion.div>
           ))}
@@ -389,7 +389,7 @@ function FeaturesSection() {
               Core Features
             </Badge>
           </motion.div>
-          <motion.h2 variants={fadeInUp} className="text-4xl md:text-5xl font-bold mb-4">
+          <motion.h2 variants={fadeInUp} className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
             Everything You Need
           </motion.h2>
           <motion.p variants={fadeInUp} className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -472,7 +472,7 @@ function HowItWorksSection() {
               Simple Process
             </Badge>
           </motion.div>
-          <motion.h2 variants={fadeInUp} className="text-4xl md:text-5xl font-bold mb-4">
+          <motion.h2 variants={fadeInUp} className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
             How It Works
           </motion.h2>
           <motion.p variants={fadeInUp} className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -549,7 +549,7 @@ function PerformanceSection() {
                 Optimized
               </Badge>
             </motion.div>
-            <motion.h2 variants={fadeInUp} className="text-4xl md:text-5xl font-bold mb-4">
+            <motion.h2 variants={fadeInUp} className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
               Gmail API
               <br />
               <span className="gradient-text">Optimizations</span>
@@ -588,16 +588,16 @@ function PerformanceSection() {
               <motion.div
                 key={index}
                 variants={fadeInUp}
-                className="glass-card rounded-xl p-5 flex items-center justify-between hover:border-purple-500/30 transition-colors"
+                className="glass-card rounded-xl p-4 sm:p-5 flex items-start sm:items-center justify-between gap-3 hover:border-purple-500/30 transition-colors"
               >
-                <div className="flex items-center gap-4">
-                  <CheckCircle2 className="w-6 h-6 text-green-400 flex-shrink-0" />
-                  <div>
-                    <div className="font-medium">{metric.label}</div>
-                    <div className="text-sm text-muted-foreground">{metric.description}</div>
+                <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
+                  <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-green-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm sm:text-base">{metric.label}</div>
+                    <div className="text-xs sm:text-sm text-muted-foreground">{metric.description}</div>
                   </div>
                 </div>
-                <Badge variant="secondary" className="bg-purple-500/10 text-purple-300 border-0">
+                <Badge variant="secondary" className="bg-purple-500/10 text-purple-300 border-0 flex-shrink-0 text-xs">
                   {metric.value}
                 </Badge>
               </motion.div>
@@ -689,7 +689,7 @@ function RoadmapSection() {
               Roadmap
             </Badge>
           </motion.div>
-          <motion.h2 variants={fadeInUp} className="text-4xl md:text-5xl font-bold mb-4">
+          <motion.h2 variants={fadeInUp} className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
             What's Next
           </motion.h2>
           <motion.p variants={fadeInUp} className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -711,7 +711,7 @@ function RoadmapSection() {
             <motion.div
               key={index}
               variants={fadeInUp}
-              className="relative flex gap-8 mb-8"
+              className="relative flex gap-4 sm:gap-8 mb-6 sm:mb-8"
             >
               {/* Timeline dot */}
               <div className="hidden md:flex flex-col items-center">
@@ -764,7 +764,7 @@ function DocsSection() {
               Documentation
             </Badge>
           </motion.div>
-          <motion.h2 variants={fadeInUp} className="text-4xl md:text-5xl font-bold mb-4">
+          <motion.h2 variants={fadeInUp} className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
             Get Started
           </motion.h2>
           <motion.p variants={fadeInUp} className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -892,14 +892,14 @@ function CTASection() {
         >
           <motion.div
             variants={scaleIn}
-            className="glass-card rounded-3xl p-12 md:p-16 glow-purple relative overflow-hidden"
+            className="glass-card rounded-2xl sm:rounded-3xl p-8 sm:p-12 md:p-16 glow-purple relative overflow-hidden"
           >
             {/* Background decoration */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl" />
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl" />
 
             <div className="relative">
-              <motion.h2 variants={fadeInUp} className="text-4xl md:text-5xl font-bold mb-4">
+              <motion.h2 variants={fadeInUp} className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
                 Ready to Organize?
               </motion.h2>
               <motion.p variants={fadeInUp} className="text-xl text-muted-foreground mb-8">
@@ -926,7 +926,7 @@ function Footer() {
   return (
     <footer className="py-12 border-t border-border">
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-4 gap-8 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 mb-12">
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
