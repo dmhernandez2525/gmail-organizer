@@ -5,9 +5,8 @@ import json
 import os
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlparse
 
 from googleapiclient.errors import HttpError
 
@@ -264,9 +263,10 @@ class UnsubscribeManager:
             return False
 
         # Check for common prefixes
-        if len(subjects) >= 3:
+        non_empty = [s for s in subjects if s]
+        if len(non_empty) >= 3:
             prefix_len = 0
-            for i in range(min(30, min(len(s) for s in subjects if s))):
+            for i in range(min(30, min(len(s) for s in non_empty))):
                 chars = set(s[i].lower() for s in subjects if len(s) > i)
                 if len(chars) == 1:
                     prefix_len += 1

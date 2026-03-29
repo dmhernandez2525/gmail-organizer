@@ -2,7 +2,7 @@
 
 import re
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Set
 from email.utils import parsedate_to_datetime

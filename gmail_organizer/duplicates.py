@@ -8,7 +8,7 @@ cleanup recommendations with space savings estimates.
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 
@@ -594,8 +594,8 @@ class DuplicateDetector:
             if sender:
                 participants.add(sender)
             # Also count To and Cc recipients
-            for field in ("To", "Cc"):
-                value = self._get_header(email, field) or ""
+            for header_name in ("To", "Cc"):
+                value = self._get_header(email, header_name) or ""
                 for addr in self._extract_addresses(value):
                     participants.add(addr)
         return len(participants)

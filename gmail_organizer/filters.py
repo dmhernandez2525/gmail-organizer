@@ -2,7 +2,7 @@
 
 import re
 from collections import Counter, defaultdict
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from googleapiclient.errors import HttpError
 
 

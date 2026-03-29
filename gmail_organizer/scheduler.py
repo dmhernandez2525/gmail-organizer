@@ -1,12 +1,15 @@
 """Scheduled sync manager for automatic periodic email syncing."""
 
 import json
+import logging
 import threading
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -208,8 +211,8 @@ class SyncScheduler:
             try:
                 self._sync_callback(account_name)
                 triggered = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Sync callback failed for %s: %s", account_name, e)
 
         with self._lock:
             schedule = self._schedules.get(account_name)
@@ -239,8 +242,8 @@ class SyncScheduler:
         try:
             with open(config_path, "w") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to save schedule config: %s", e)
 
     def _load_config(self):
         """Load schedule configuration from disk."""
@@ -255,5 +258,5 @@ class SyncScheduler:
             with self._lock:
                 for name, config_dict in data.items():
                     self._schedules[name] = ScheduleConfig(**config_dict)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to load schedule config: %s", e)

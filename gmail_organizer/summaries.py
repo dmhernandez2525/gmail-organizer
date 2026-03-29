@@ -317,7 +317,7 @@ class EmailSummarizer:
         highlights = []
         for email in emails:
             subject = email.get("subject", "")
-            body = email.get("snippet", email.get("body", ""))
+            body = email.get("body_preview") or email.get("body_preview") or email.get("snippet") or email.get("body") or ""
             combined = f"{subject} {body}"
             labels = email.get("labels", [])
 
@@ -345,7 +345,7 @@ class EmailSummarizer:
         items = []
         for email in emails:
             subject = email.get("subject", "")
-            body = email.get("snippet", email.get("body", ""))
+            body = email.get("body_preview") or email.get("body_preview") or email.get("snippet") or email.get("body") or ""
             combined = f"{subject} {body}"
 
             matching_patterns = []
@@ -384,7 +384,7 @@ class EmailSummarizer:
     def _needs_response(self, email: Dict) -> bool:
         """Check if an email likely needs a response."""
         subject = email.get("subject", "") or ""
-        body = email.get("snippet") or email.get("body") or ""
+        body = email.get("body_preview") or email.get("snippet") or email.get("body") or ""
         combined = f"{subject} {body}"
 
         # Check for direct questions

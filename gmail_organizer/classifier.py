@@ -79,7 +79,7 @@ Category (respond with one word only):"""
 
         except Exception as e:
             print(f"Classification error: {e}")
-            return "saved", 0.5  # Default to saved with low confidence
+            return "saved", 0.0  # Error fallback; 0.0 confidence signals failure
 
     def _fuzzy_match_category(self, category_text: str) -> str:
         """Try to match invalid category to valid one"""

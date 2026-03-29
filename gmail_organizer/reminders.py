@@ -1,7 +1,7 @@
 """Follow-up reminder detection for emails needing responses or action."""
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -181,7 +181,7 @@ class FollowUpDetector:
             return None
 
         subject = email.get("subject", "") or ""
-        body = email.get("body") or email.get("snippet") or ""
+        body = email.get("body_preview") or email.get("body") or email.get("snippet") or ""
         combined_text = f"{subject} {body}"
 
         # Check for action items (higher priority than questions)
@@ -284,7 +284,7 @@ class FollowUpDetector:
         Urgent keywords can bump the urgency level up by one tier.
         """
         subject = email.get("subject", "") or ""
-        body = email.get("body") or email.get("snippet") or ""
+        body = email.get("body_preview") or email.get("body") or email.get("snippet") or ""
         combined_text = f"{subject} {body}"
 
         has_urgent_keywords = any(

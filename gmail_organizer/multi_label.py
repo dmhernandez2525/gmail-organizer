@@ -3,7 +3,7 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -188,7 +188,7 @@ class MultiLabelClassifier:
         email_id = email.get("email_id", "")
         sender = email.get("sender", email.get("from", "")).lower()
         subject = email.get("subject", "").lower()
-        body = email.get("body", email.get("snippet", "")).lower()
+        body = (email.get("body_preview") or email.get("body") or email.get("snippet") or "").lower()
 
         # Extract domain from sender
         domain = ""

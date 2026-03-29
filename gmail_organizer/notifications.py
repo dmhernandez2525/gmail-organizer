@@ -1,6 +1,9 @@
 """Webhook and notification system for Gmail Organizer events."""
 
+import ipaddress
 import json
+import logging
+import socket
 import threading
 import urllib.request
 import urllib.error
@@ -8,6 +11,9 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,19 +83,61 @@ class NotificationManager:
         self._load_config()
         self._load_history()
 
+    @staticmethod
+    def _validate_webhook_url(url: str):
+        """Validate a webhook URL to prevent SSRF attacks.
+
+        Only allows https:// URLs pointing to public (non-private) IP addresses.
+        Raises ValueError if the URL is unsafe.
+        """
+        parsed = urlparse(url)
+
+        if parsed.scheme != "https":
+            raise ValueError(
+                f"Webhook URL must use HTTPS (got '{parsed.scheme}')"
+            )
+
+        hostname = parsed.hostname
+        if not hostname:
+            raise ValueError("Webhook URL has no hostname")
+
+        # Block obvious internal hostnames
+        blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "::1",
+                         "metadata.google.internal", "169.254.169.254"}
+        if hostname.lower() in blocked_hosts:
+            raise ValueError(f"Webhook URL points to blocked host: {hostname}")
+
+        # Resolve hostname and check all IPs are public
+        try:
+            addr_infos = socket.getaddrinfo(hostname, parsed.port or 443)
+        except socket.gaierror:
+            raise ValueError(f"Cannot resolve webhook hostname: {hostname}")
+
+        for family, _, _, _, sockaddr in addr_infos:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                raise ValueError(
+                    f"Webhook URL resolves to non-public IP: {ip}"
+                )
+
     def add_webhook(self, url: str, name: str = "", events: List[str] = None,
                     secret: str = "") -> WebhookConfig:
         """Add a new webhook endpoint.
 
         Args:
-            url: The webhook URL to POST to.
+            url: The webhook URL to POST to (must be HTTPS, public IP).
             name: Human-readable name for this webhook.
             events: List of event types to subscribe to.
             secret: Optional secret for webhook signature verification.
 
         Returns:
             The created WebhookConfig.
+
+        Raises:
+            ValueError: If the URL fails SSRF validation.
         """
+        self._validate_webhook_url(url)
+
         webhook = WebhookConfig(
             url=url,
             name=name or url[:30],
@@ -112,12 +160,14 @@ class NotificationManager:
         Returns:
             True if removed successfully.
         """
+        removed = False
         with self._lock:
             if 0 <= index < len(self._webhooks):
                 self._webhooks.pop(index)
-                self._save_config()
-                return True
-        return False
+                removed = True
+        if removed:
+            self._save_config()
+        return removed
 
     def update_webhook(self, index: int, enabled: Optional[bool] = None,
                        events: Optional[List[str]] = None) -> bool:
@@ -131,15 +181,17 @@ class NotificationManager:
         Returns:
             True if updated successfully.
         """
+        updated = False
         with self._lock:
             if 0 <= index < len(self._webhooks):
                 if enabled is not None:
                     self._webhooks[index].enabled = enabled
                 if events is not None:
                     self._webhooks[index].events = events
-                self._save_config()
-                return True
-        return False
+                updated = True
+        if updated:
+            self._save_config()
+        return updated
 
     def get_webhooks(self) -> List[WebhookConfig]:
         """Get all configured webhooks."""
@@ -248,7 +300,7 @@ class NotificationManager:
                 headers=headers,
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=10):
                 pass  # Success
 
             with self._lock:
@@ -290,8 +342,8 @@ class NotificationManager:
         try:
             with open(config_path, "w") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to save webhook config: %s", e)
 
     def _load_config(self):
         """Load webhook configuration from disk."""
@@ -304,8 +356,8 @@ class NotificationManager:
                 data = json.load(f)
             with self._lock:
                 self._webhooks = [WebhookConfig(**item) for item in data]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to load webhook config: %s", e)
 
     def _save_history(self):
         """Save notification history to disk."""
@@ -316,8 +368,8 @@ class NotificationManager:
         try:
             with open(history_path, "w") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to save notification history: %s", e)
 
     def _load_history(self):
         """Load notification history from disk."""
@@ -330,5 +382,5 @@ class NotificationManager:
                 data = json.load(f)
             with self._lock:
                 self._history = data[-self.MAX_HISTORY:]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to load notification history: %s", e)

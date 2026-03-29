@@ -188,7 +188,7 @@ def test_analyzer():
 
     # Get suggestions
     suggestions = analyzer.suggest_categories(analysis, job_search_focused=True)
-    print(f"\nSuggested Categories:")
+    print("\nSuggested Categories:")
     print(suggestions.get('summary', ''))
     for cat in suggestions.get('categories', [])[:5]:
         print(f"\n  {cat['name']}")

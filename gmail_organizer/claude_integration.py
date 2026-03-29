@@ -1,6 +1,5 @@
 """Claude Code CLI Integration for Email Classification"""
 
-import os
 import json
 import subprocess
 from pathlib import Path
@@ -137,7 +136,7 @@ def launch_claude_code_terminal(prompt_file: str) -> None:
     applescript = f'''
 tell application "Terminal"
     activate
-    do script "cd {project_dir} && echo '🤖 Starting Claude Code classification...' && claude --dangerously-skip-permissions < {prompt_file} && echo '' && echo '✓ Classification complete! Check .claude-processing/results.json' && echo '' && echo 'Press Enter to return to the app...' && read"
+    do script "cd {project_dir} && echo 'Starting Claude Code classification...' && claude < {prompt_file} && echo '' && echo 'Classification complete! Check .claude-processing/results.json' && echo '' && echo 'Press Enter to return to the app...' && read"
 end tell
 '''
 

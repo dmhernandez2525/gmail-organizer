@@ -1,11 +1,10 @@
 """Main Gmail Organizer Application"""
 
 import sys
-from pathlib import Path
 from .auth import GmailAuthManager
 from .operations import GmailOperations
 from .classifier import EmailClassifier
-from .config import BATCH_SIZE, MAX_EMAILS, CATEGORIES
+from .config import MAX_EMAILS
 
 
 class GmailOrganizer:
@@ -115,11 +114,11 @@ class GmailOrganizer:
         print(f"Fetched {len(emails)} emails")
 
         # Step 3: Classify emails
-        print(f"\nStep 3: Classifying emails with AI...")
+        print("\nStep 3: Classifying emails with AI...")
         classified_emails = self.classifier.classify_batch(emails)
 
         # Step 4: Apply labels
-        print(f"\nStep 4: Applying labels to emails...")
+        print("\nStep 4: Applying labels to emails...")
         applied_count = 0
         category_counts = {}
 
@@ -158,7 +157,7 @@ class GmailOrganizer:
         print(f"{'='*60}")
         print(f"Total emails processed: {result['total_processed']}")
         print(f"Total labels applied: {result['total_labeled']}")
-        print(f"\nEmails by category:")
+        print("\nEmails by category:")
 
         for category, count in sorted(result['category_counts'].items(), key=lambda x: x[1], reverse=True):
             cat_info = self.classifier.get_category_info(category)
@@ -187,7 +186,7 @@ class GmailOrganizer:
                 combined_counts[category] = combined_counts.get(category, 0) + count
 
         if combined_counts:
-            print(f"\nCombined category distribution:")
+            print("\nCombined category distribution:")
             for category, count in sorted(combined_counts.items(), key=lambda x: x[1], reverse=True):
                 cat_info = self.classifier.get_category_info(category)
                 percentage = (count / total_emails) * 100

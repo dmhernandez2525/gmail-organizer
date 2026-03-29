@@ -51,10 +51,16 @@ if 'sync_manager' not in st.session_state:
     st.session_state.sync_manager = SyncManager()
 
 if 'classifier' not in st.session_state:
-    st.session_state.classifier = EmailClassifier()
+    try:
+        st.session_state.classifier = EmailClassifier()
+    except (ValueError, Exception):
+        st.session_state.classifier = None
 
 if 'analyzer' not in st.session_state:
-    st.session_state.analyzer = EmailAnalyzer()
+    try:
+        st.session_state.analyzer = EmailAnalyzer()
+    except (ValueError, Exception):
+        st.session_state.analyzer = None
 
 if 'processing_results' not in st.session_state:
     st.session_state.processing_results = {}

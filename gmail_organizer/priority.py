@@ -3,9 +3,9 @@
 import re
 import json
 import os
-from collections import Counter, defaultdict
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from collections import Counter
+from datetime import datetime
+from typing import Dict, List, Tuple
 from email.utils import parsedate_to_datetime
 
 

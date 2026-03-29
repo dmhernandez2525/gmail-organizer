@@ -201,7 +201,7 @@ class EmailCalendar:
             self._processed_email_ids.add(email_id)
 
             subject = email.get("subject", "")
-            body = email.get("body", email.get("snippet", ""))
+            body = email.get("body_preview") or email.get("body") or email.get("snippet") or ""
             sender = email.get("sender", email.get("from", ""))
             date_str = email.get("date", "")
 
@@ -368,7 +368,7 @@ class EmailCalendar:
             "PRODID:-//Gmail Organizer//Calendar//EN",
             "CALSCALE:GREGORIAN",
             "METHOD:PUBLISH",
-            f"X-WR-CALNAME:Gmail Organizer Events",
+            "X-WR-CALNAME:Gmail Organizer Events",
         ]
 
         for event in events:

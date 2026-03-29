@@ -4,7 +4,6 @@ import re
 from collections import Counter
 from typing import Dict, List, Tuple
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
 
 
 @dataclass

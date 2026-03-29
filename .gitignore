@@ -56,3 +56,6 @@ website/dist/
 # Processing results
 .processing-results/
 .processing/
+
+# Session resume
+.jarvis-resume

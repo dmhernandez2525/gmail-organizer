@@ -1,11 +1,14 @@
 """Custom category training module for user-defined email classification."""
 
 import json
+import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -391,8 +394,8 @@ class CategoryTrainer:
         try:
             with open(filepath, "w") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to save training data: %s", e)
 
     def _load_training_data(self):
         """Load training examples from disk."""
@@ -417,5 +420,5 @@ class CategoryTrainer:
 
             if self._examples:
                 self.train()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to load training data: %s", e)

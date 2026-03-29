@@ -9,7 +9,7 @@ import json
 import os
 import io
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 from collections import Counter
 
 
@@ -253,22 +253,22 @@ class EmailExporter:
                 f.write("Date: {}\n".format(self._sanitize_header(date_str)))
 
                 if email.get("message_id"):
-                    f.write("Message-ID: {}\n".format(email["message_id"]))
+                    f.write("Message-ID: {}\n".format(self._sanitize_header(email["message_id"])))
 
                 if email.get("labels"):
                     labels = email["labels"]
                     if isinstance(labels, list):
                         labels = ", ".join(labels)
-                    f.write("X-Gmail-Labels: {}\n".format(labels))
+                    f.write("X-Gmail-Labels: {}\n".format(self._sanitize_header(labels)))
 
                 if email.get("category"):
-                    f.write("X-Category: {}\n".format(email["category"]))
+                    f.write("X-Category: {}\n".format(self._sanitize_header(email["category"])))
 
                 # Blank line separating headers from body
                 f.write("\n")
 
                 # Body - escape any lines starting with "From "
-                body = email.get("body", email.get("snippet", ""))
+                body = email.get("body_preview") or email.get("body") or email.get("snippet") or ""
                 if body:
                     for line in body.splitlines():
                         if line.startswith("From "):
@@ -296,13 +296,15 @@ class EmailExporter:
             sender: Sender string.
 
         Returns:
-            The extracted email address.
+            The extracted email address, sanitized of newlines.
         """
         if "<" in sender and ">" in sender:
             start = sender.index("<") + 1
             end = sender.index(">")
-            return sender[start:end]
-        return sender.strip()
+            addr = sender[start:end]
+        else:
+            addr = sender.strip()
+        return addr.replace('\r', '').replace('\n', '')
 
     def _format_mbox_date(self, date_str: str) -> str:
         """Format a date string for the MBOX From_ line.
@@ -494,7 +496,7 @@ class EmailExporter:
             total += len(email.get("subject", "").encode("utf-8")) + 15
             total += len(email.get("date", "").encode("utf-8")) + 10
             # Body
-            body = email.get("body", email.get("snippet", ""))
+            body = email.get("body_preview") or email.get("body") or email.get("snippet") or ""
             total += len(body.encode("utf-8")) if body else 0
             # Separators
             total += 5

@@ -6,7 +6,7 @@ including frequency, reply rate, authentication pass rate, relationship age,
 and read rate. Supports first-time sender detection and sender categorization.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict

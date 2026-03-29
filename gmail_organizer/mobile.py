@@ -1,6 +1,5 @@
 """Mobile companion and PWA support for Gmail Organizer."""
 
-import base64
 import struct
 import zlib
 from pathlib import Path
@@ -107,12 +106,10 @@ def _create_png(width: int, height: int, color: tuple) -> bytes:
     """
     r, g, b = color
 
-    # Build raw pixel data (RGBA)
-    raw_data = b''
-    for _ in range(height):
-        raw_data += b'\x00'  # Filter byte (none)
-        for _ in range(width):
-            raw_data += struct.pack('BBBB', r, g, b, 255)
+    # Build raw pixel data (RGBA) using bytearray for O(n) performance
+    pixel = struct.pack('BBBB', r, g, b, 255)
+    row = b'\x00' + pixel * width  # Filter byte + row pixels
+    raw_data = row * height
 
     # Compress with zlib
     compressed = zlib.compress(raw_data, 9)

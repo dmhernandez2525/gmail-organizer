@@ -16,6 +16,8 @@ services:
       - ./client_secret.json:/app/client_secret.json:ro
       # Email cache for performance
       - ./.email-cache:/app/.email-cache
+      # Sync state (historyId, email db, configs) - must persist across restarts
+      - ./.sync-state:/app/.sync-state
       # Logs directory
       - ./logs:/app/logs
       # Streamlit config

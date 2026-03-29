@@ -1,7 +1,6 @@
 """Bulk Actions Engine - batch Gmail operations with progress tracking"""
 
-import re
-from typing import Dict, List, Optional, Callable, Tuple
+from typing import Dict, List, Optional, Callable
 from googleapiclient.errors import HttpError
 
 
@@ -180,7 +179,7 @@ class BulkActionEngine:
                 userId='me', body=label_body
             ).execute()
             return created['id']
-        except HttpError as e:
+        except HttpError:
             return None
 
     def list_labels(self) -> List[Dict]:

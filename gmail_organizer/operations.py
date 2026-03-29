@@ -2,12 +2,11 @@
 
 import base64
 import json
+import os
 from pathlib import Path
 from typing import List, Dict, Optional
 from googleapiclient.errors import HttpError
-from googleapiclient.http import BatchHttpRequest
-from email.mime.text import MIMEText
-from .config import CATEGORIES, BATCH_SIZE
+from .config import CATEGORIES
 import time
 
 
@@ -183,8 +182,11 @@ class GmailOperations:
                 "emails": emails,
                 "total_synced": len(emails)
             }
-            with open(sync_path, 'w') as f:
+            # Atomic write: write to temp file, then rename
+            tmp_path = sync_path.with_suffix('.tmp')
+            with open(tmp_path, 'w') as f:
                 json.dump(state, f)
+            os.replace(str(tmp_path), str(sync_path))
             logger.info(f"Saved sync state: historyId={history_id}, {len(emails)} emails")
         except Exception as e:
             logger.error(f"Could not save sync state: {e}")
@@ -216,7 +218,6 @@ class GmailOperations:
             List of all email dictionaries (cached + new)
         """
         from gmail_organizer.logger import logger
-        from datetime import datetime
 
         sync_state = self._load_sync_state()
         stored_history_id = sync_state.get("history_id")
@@ -300,7 +301,7 @@ class GmailOperations:
             self._save_sync_state(current_history_id, emails_dict)
             logger.info(f"Full sync complete: {len(emails_dict)} emails, historyId={current_history_id}")
             print(f"✓ Full sync complete: {len(emails_dict):,} emails")
-            print(f"✓ Saved sync state for future incremental syncs")
+            print("✓ Saved sync state for future incremental syncs")
 
             return list(emails_dict.values())
 
@@ -498,7 +499,7 @@ class GmailOperations:
 
             if remaining_to_fetch == 0:
                 logger.info(f"✓ All {total_to_fetch} emails already fetched from checkpoint!")
-                print(f"✓ All emails already fetched!")
+                print("✓ All emails already fetched!")
                 return emails
 
             logger.info(f"Fetching details for {remaining_to_fetch} emails ({len(emails)} already cached)...")
@@ -626,6 +627,13 @@ class GmailOperations:
                 date = self._get_header(headers, 'Date')
                 body_preview = self._get_body_preview(response['payload'])
 
+                # Build flat headers dict for modules like unsubscribe
+                headers_dict = {}
+                for h in headers:
+                    name = h.get('name', '')
+                    if name:
+                        headers_dict[name] = h.get('value', '')
+
                 emails.append({
                     'email_id': response['id'],
                     'subject': subject,
@@ -634,7 +642,15 @@ class GmailOperations:
                     'date': date,
                     'snippet': response.get('snippet', ''),
                     'body_preview': body_preview,
-                    'labels': response.get('labelIds', [])
+                    'labels': response.get('labelIds', []),
+                    'headers': headers_dict,
+                    # Raw Gmail API fields for modules that need them
+                    # (storage, duplicates, reminders, reputation)
+                    'threadId': response.get('threadId', ''),
+                    'labelIds': response.get('labelIds', []),
+                    'sizeEstimate': response.get('sizeEstimate', 0),
+                    'internalDate': response.get('internalDate', ''),
+                    'payload': response.get('payload', {}),
                 })
             except Exception as e:
                 logger.warning(f"Error parsing email in batch: {e}")
@@ -686,6 +702,13 @@ class GmailOperations:
             date = self._get_header(headers, 'Date')
             body_preview = self._get_body_preview(message['payload'])
 
+            # Build flat headers dict for modules like unsubscribe
+            headers_dict = {}
+            for h in headers:
+                name = h.get('name', '')
+                if name:
+                    headers_dict[name] = h.get('value', '')
+
             return {
                 'email_id': email_id,
                 'subject': subject,
@@ -694,7 +717,13 @@ class GmailOperations:
                 'date': date,
                 'snippet': message.get('snippet', ''),
                 'body_preview': body_preview,
-                'labels': message.get('labelIds', [])
+                'labels': message.get('labelIds', []),
+                'headers': headers_dict,
+                'threadId': message.get('threadId', ''),
+                'labelIds': message.get('labelIds', []),
+                'sizeEstimate': message.get('sizeEstimate', 0),
+                'internalDate': message.get('internalDate', ''),
+                'payload': message.get('payload', {}),
             }
 
         except HttpError as error:
