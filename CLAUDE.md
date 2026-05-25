@@ -3,6 +3,17 @@
 ### Package Installation Policy
 - NEVER run `npm install`, `yarn add`, `pnpm add`, `bun add`, or any package
   installation command without explicit approval from the developer.
+- NEVER run package installs or dependency updates directly on the host machine.
+  Approved installs must run inside a disposable container or VM unless the
+  developer explicitly approves a host install for that exact command.
+- The install sandbox must NOT mount the host home directory, SSH keys, GitHub
+  tokens, cloud credentials, password-manager data, `.npmrc` auth tokens,
+  Docker socket, SSH agent, or credential helpers.
+- Do NOT bind-mount the real project directory into an install sandbox. Copy in
+  only the minimum manifest files needed for dependency resolution, such as
+  package.json, lockfiles, and workspace package manifests.
+- Copy back only reviewed dependency metadata, usually package.json or lockfile
+  changes. NEVER copy node_modules or package-manager caches back to the host.
 - NEVER run `npm update`, `yarn upgrade`, `pnpm update`, `bun update`, or any
   package update command. All updates are manual and reviewed.
 - NEVER modify package.json dependency versions (dependencies, devDependencies,
@@ -18,8 +29,8 @@ If a task requires a package that is not currently installed:
 2. Explain WHY the package is needed and whether alternatives exist in the
    current dependency tree.
 3. WAIT for the developer to manually install and verify the package.
-4. Do NOT suggest running install commands. The developer will handle installation
-   through the safe install process.
+4. Do NOT suggest host install commands. The developer will handle installation
+   through the disposable container / VM safe install process.
 
 ### When Fixing Dependency Issues
 - If `npm audit` or similar shows vulnerabilities, present the findings but
@@ -34,7 +45,9 @@ If a task requires a package that is not currently installed:
 - `npm ci --ignore-scripts` may be run ONLY when ALL of the following are true:
   (1) the developer has explicitly approved this command for this session,
   (2) the lockfile on disk is unmodified from the committed version,
-  (3) the goal is to restore node_modules so existing tests can run.
+  (3) it runs inside an approved disposable container or VM with no host
+      secrets and no real project bind mount,
+  (4) the goal is to restore node_modules so existing tests can run.
   Any other install / restore command requires fresh approval.
 - If the lockfile appears corrupted, flag it for manual review.
 
