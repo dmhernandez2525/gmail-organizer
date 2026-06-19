@@ -302,11 +302,17 @@ class EmailSecurityScanner:
         email_addr = name_match.group(2).lower()
         email_domain = email_addr.split('@')[1] if '@' in email_addr else ""
 
-        # Check if display name contains a known brand but email is from different domain
+        # Check if display name contains a known brand but email is from a
+        # different domain. Match the registrable domain exactly (or as a parent
+        # of a subdomain) so spoofs like "paypal.com.evil.tk" are not treated as
+        # legitimate just because they contain the brand domain as a substring.
         for brand in self.LEGITIMATE_DOMAINS:
             brand_name = brand.split('.')[0]
+            domain_matches_brand = (
+                email_domain == brand or email_domain.endswith('.' + brand)
+            )
             if (brand_name in display_name and
-                    brand not in email_domain and
+                    not domain_matches_brand and
                     len(brand_name) >= 4):
                 return (f"Display name '{display_name}' mentions {brand_name} "
                         f"but email is from {email_domain}")

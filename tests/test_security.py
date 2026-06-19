@@ -201,6 +201,18 @@ class TestDisplayMismatch:
         result = scanner._check_display_mismatch("IBM <info@ibm.com>")
         assert result == ""
 
+    def test_subdomain_spoof_flagged(self, scanner):
+        # "paypal.com.evil.tk" contains the brand domain as a substring but is
+        # NOT actually PayPal, so it must still be flagged as a mismatch.
+        result = scanner._check_display_mismatch("PayPal <billing@paypal.com.evil.tk>")
+        assert "paypal" in result.lower()
+        assert "paypal.com.evil.tk" in result
+
+    def test_legitimate_subdomain_not_flagged(self, scanner):
+        # A real Google subdomain should not be treated as a mismatch.
+        result = scanner._check_display_mismatch("Google <noreply@mail.google.com>")
+        assert result == ""
+
     def test_mismatch_increases_score_in_analyze(self, scanner):
         email = _make_email(sender="PayPal <random@phishing.com>")
         alert = scanner._analyze_email(email)
