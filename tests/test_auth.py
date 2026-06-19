@@ -355,6 +355,40 @@ class TestAuthenticateAccount:
         mock_creds.refresh.assert_called_once()
         assert email == "testuser@gmail.com"
 
+    def test_refreshed_credentials_are_persisted(
+        self, tmp_path, monkeypatch, client_secret_file, fake_creds_data, mock_gmail_service
+    ):
+        """After a successful refresh, the new token must be written back to disk."""
+        creds_dir = tmp_path / "creds"
+        monkeypatch.setattr("gmail_organizer.auth.CREDENTIALS_DIR", str(creds_dir))
+        manager = GmailAuthManager(client_secret_path=str(client_secret_file))
+
+        token_path = creds_dir / "token_persist.json"
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(token_path, "w") as f:
+            json.dump(fake_creds_data, f)
+
+        mock_creds = MagicMock()
+        mock_creds.valid = False
+        mock_creds.expired = True
+        mock_creds.refresh_token = "fake-refresh"
+
+        def simulate_refresh(_request):
+            mock_creds.valid = True
+
+        mock_creds.refresh.side_effect = simulate_refresh
+
+        with patch("gmail_organizer.auth._load_credentials_json", return_value=mock_creds), \
+             patch("gmail_organizer.auth.build", return_value=mock_gmail_service), \
+             patch("gmail_organizer.auth.Request"), \
+             patch("gmail_organizer.auth._save_credentials_json") as mock_save:
+            manager.authenticate_account("persist")
+
+        mock_save.assert_called_once()
+        saved_creds, saved_path = mock_save.call_args.args
+        assert saved_creds is mock_creds
+        assert saved_path == token_path
+
     def test_runs_oauth_flow_when_no_creds(
         self, tmp_path, monkeypatch, client_secret_file, mock_gmail_service
     ):

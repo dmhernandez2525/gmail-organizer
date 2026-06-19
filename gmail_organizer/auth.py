@@ -122,6 +122,10 @@ class GmailAuthManager:
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
+                    # Persist the refreshed token so the new access token is not
+                    # lost between runs. Without this, every run re-refreshes.
+                    if token_path is not None:
+                        _save_credentials_json(creds, token_path)
                 except Exception as e:
                     print(f"Token refresh failed: {e}. Re-authenticating...")
                     creds = None
