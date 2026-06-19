@@ -1,6 +1,7 @@
 """Claude Code CLI Integration for Email Classification"""
 
 import json
+import shlex
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -20,7 +21,7 @@ def check_claude_code_installed() -> bool:
             text=True,
             timeout=5
         )
-        installed = result.returncode == 0 and result.stdout.strip()
+        installed = result.returncode == 0 and bool(result.stdout.strip())
         logger.info(f"Claude Code installed: {installed}")
         return installed
     except Exception as e:
@@ -132,11 +133,26 @@ def launch_claude_code_terminal(prompt_file: str) -> None:
     """
     project_dir = Path(__file__).parent.parent
 
+    # Build the shell command with shell-quoted paths so paths containing
+    # spaces or special characters cannot break out of the command.
+    shell_command = (
+        f"cd {shlex.quote(str(project_dir))} && "
+        "echo 'Starting Claude Code classification...' && "
+        f"claude < {shlex.quote(str(prompt_file))} && "
+        "echo '' && "
+        "echo 'Classification complete! Check .claude-processing/results.json' && "
+        "echo '' && "
+        "echo 'Press Enter to return to the app...' && read"
+    )
+
+    # Escape for embedding inside an AppleScript double-quoted string literal.
+    applescript_command = shell_command.replace('\\', '\\\\').replace('"', '\\"')
+
     # Create AppleScript to open Terminal and run Claude Code
     applescript = f'''
 tell application "Terminal"
     activate
-    do script "cd {project_dir} && echo 'Starting Claude Code classification...' && claude < {prompt_file} && echo '' && echo 'Classification complete! Check .claude-processing/results.json' && echo '' && echo 'Press Enter to return to the app...' && read"
+    do script "{applescript_command}"
 end tell
 '''
 
@@ -168,6 +184,12 @@ def read_classification_results() -> Optional[List[Dict]]:
         with open(results_path, 'r') as f:
             results = json.load(f)
 
+        if not isinstance(results, list):
+            logger.error(
+                f"Results file did not contain a JSON array (got {type(results).__name__})"
+            )
+            return None
+
         logger.info(f"Read {len(results)} classification results")
         return results
 
@@ -183,7 +205,8 @@ def cleanup_processing_files():
     """Remove all files from .claude-processing/"""
     try:
         for file in PROCESSING_DIR.glob("*"):
-            file.unlink()
+            if file.is_file():
+                file.unlink()
         logger.info("Cleaned up processing files")
     except Exception as e:
         logger.error(f"Error cleaning up: {e}")
