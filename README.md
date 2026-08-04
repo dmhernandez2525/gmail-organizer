@@ -302,10 +302,27 @@ npm install -g @anthropic-ai/claude-code
 
 #### Option 1: Launch Script
 
+macOS or Linux:
+
 ```bash
 cd gmail-organizer
 ./scripts/launch_gmail_organizer.sh
 ```
+
+Windows PowerShell:
+
+```powershell
+Set-Location gmail-organizer
+.\scripts\launch_gmail_organizer.ps1
+```
+
+To validate the Windows setup without starting Streamlit or opening a browser:
+
+```powershell
+.\scripts\launch_gmail_organizer.ps1 -ValidateOnly
+```
+
+The Windows launcher checks the project files, virtual environment, and authentication configuration without printing credential values. It uses the default browser, limits automatic restarts to three by default, and stops only the Streamlit process it created. Use `-NoBrowser`, `-Port`, or `-MaxRestarts` to override those defaults.
 
 #### Option 2: Streamlit Direct
 
@@ -397,6 +414,7 @@ gmail-organizer/
 │   └── README.md             # Helper app documentation
 ├── scripts/                  # Launcher scripts
 │   ├── launch_gmail_organizer.sh
+│   ├── launch_gmail_organizer.ps1
 │   └── GmailOrganizer.applescript
 ├── website/                  # React portfolio site
 │   ├── src/
