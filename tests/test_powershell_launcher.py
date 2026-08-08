@@ -139,8 +139,16 @@ def test_default_project_root_resolves_from_launcher_location(tmp_path):
     [
         ("ANTHROPIC_API_KEY=configured\n", True),
         ("  ANTHROPIC_API_KEY = configured  \n", True),
+        ('ANTHROPIC_API_KEY="configured value" # local note\n', True),
+        ("ANTHROPIC_API_KEY='configured # value'\n", True),
+        ("ANTHROPIC_API_KEY=configured # local note\n", True),
         ("ANTHROPIC_API_KEY=\n", False),
+        ('ANTHROPIC_API_KEY=""\n', False),
+        ("ANTHROPIC_API_KEY=''\n", False),
+        ('ANTHROPIC_API_KEY="   "\n', False),
+        ('ANTHROPIC_API_KEY="unterminated\n', False),
         ("# ANTHROPIC_API_KEY=commented\n", False),
+        ("ANTHROPIC_API_KEY=   # comment only\n", False),
     ],
 )
 def test_anthropic_key_detection_handles_common_env_forms(tmp_path, env_text, expected):

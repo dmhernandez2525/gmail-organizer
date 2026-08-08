@@ -48,7 +48,34 @@ function Test-AnthropicKeyConfigured {
     param([string]$EnvPath)
 
     foreach ($line in [System.IO.File]::ReadLines($EnvPath)) {
-        if ($line -match '^\s*ANTHROPIC_API_KEY\s*=\s*[^\s#].*$') {
+        $match = [regex]::Match($line, '^\s*ANTHROPIC_API_KEY\s*=\s*(?<value>.*)$')
+        if (-not $match.Success) {
+            continue
+        }
+
+        $value = $match.Groups['value'].Value.Trim()
+        if ([string]::IsNullOrWhiteSpace($value) -or $value.StartsWith('#')) {
+            continue
+        }
+
+        if ($value.StartsWith('"')) {
+            $quoted = [regex]::Match($value, '^"(?<inner>[^\"]*)"\s*(?:#.*)?$')
+            if ($quoted.Success -and -not [string]::IsNullOrWhiteSpace($quoted.Groups['inner'].Value)) {
+                return $true
+            }
+            continue
+        }
+
+        if ($value.StartsWith("'")) {
+            $quoted = [regex]::Match($value, "^'(?<inner>[^']*)'\s*(?:#.*)?$")
+            if ($quoted.Success -and -not [string]::IsNullOrWhiteSpace($quoted.Groups['inner'].Value)) {
+                return $true
+            }
+            continue
+        }
+
+        $unquoted = [regex]::Replace($value, '\s+#.*$', '').Trim()
+        if (-not [string]::IsNullOrWhiteSpace($unquoted)) {
             return $true
         }
     }
