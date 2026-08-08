@@ -5,17 +5,16 @@ import os
 import pickle
 import stat
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from gmail_organizer.auth import (
-    _load_credentials_json,
-    _save_credentials_json,
-    _migrate_pickle_to_json,
     GmailAuthManager,
+    _load_credentials_json,
+    _migrate_pickle_to_json,
+    _save_credentials_json,
 )
-
 
 # ---------------------------------------------------------------------------
 # _load_credentials_json
@@ -26,13 +25,13 @@ class TestLoadCredentialsJson:
 
     def test_loads_all_fields(self, token_json_file, fake_creds_data):
         """All credential fields should be populated from the JSON file."""
-        with patch("gmail_organizer.auth.Credentials") as MockCreds:
+        with patch("gmail_organizer.auth.Credentials") as mock_credentials_class:
             instance = MagicMock()
-            MockCreds.return_value = instance
+            mock_credentials_class.return_value = instance
 
             _load_credentials_json(token_json_file)
 
-            MockCreds.assert_called_once_with(
+            mock_credentials_class.assert_called_once_with(
                 token=fake_creds_data["token"],
                 refresh_token=fake_creds_data["refresh_token"],
                 token_uri=fake_creds_data["token_uri"],
@@ -337,6 +336,8 @@ class TestAuthenticateAccount:
             json.dump(fake_creds_data, f)
 
         mock_creds = MagicMock()
+        for field in ("token", "refresh_token", "token_uri", "client_id", "client_secret", "scopes"):
+            setattr(mock_creds, field, fake_creds_data[field])
         mock_creds.valid = False
         mock_creds.expired = True
         mock_creds.refresh_token = "fake-refresh"

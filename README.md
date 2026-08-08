@@ -355,12 +355,15 @@ availability. An inherited `ANTHROPIC_API_KEY` takes precedence over `.env`; rep
 the last assignment. The sanitized JSON field `Launchable` is true only when all checks pass, and no
 credential values are printed.
 
-On a normal launch, the browser opens only after the selected port accepts a TCP connection. The
-launcher limits automatic restarts to three by default and cleans up the process tree it started on
-Windows when controlled shutdown runs. Use `-NoBrowser`, `-Port`, `-MaxRestarts`, or
-`-StartupTimeoutSeconds` to override those defaults. The native Windows CI job exercises the `.cmd`
-path, startup, bounded retry, timeout, and process-tree contracts. A real Google OAuth consent flow
-still requires a disposable manual Windows acceptance test.
+On a normal launch, the browser opens only after the selected Python process owns the loopback
+listener and Streamlit's local health endpoint returns `ok`. A different process on the requested
+port cannot satisfy readiness. The launcher limits automatic restarts to three by default and uses
+`taskkill /T /F` for the process tree it started on Windows. A failed tree kill is reported as a
+launcher failure even when a parent-only fallback succeeds. Use `-NoBrowser`, `-Port`,
+`-MaxRestarts`, or `-StartupTimeoutSeconds` to override those defaults. The native Windows CI job
+exercises the `.cmd` path, startup, bounded retry, timeout, and process-tree contracts, with separate
+80 percent gates for statement, source-decision branch, function, and executable-line coverage. A
+real Google OAuth consent flow still requires a disposable manual Windows acceptance test.
 
 #### Option 2: Streamlit Direct
 

@@ -290,6 +290,8 @@ function New-LaunchPlan {
         "app.py",
         "--server.headless",
         "true",
+        "--server.address",
+        "127.0.0.1",
         "--server.port",
         $ServerPort.ToString()
     )
@@ -328,19 +330,95 @@ function Test-TcpPortAvailable {
     }
 }
 
-function Test-TcpPortOpen {
+function Get-ListeningProcessIds {
     param([int]$ServerPort)
 
-    $client = [System.Net.Sockets.TcpClient]::new()
+    $processIds = [System.Collections.Generic.HashSet[int]]::new()
+    if (Test-IsWindows) {
+        $netstat = Get-Command netstat.exe -CommandType Application -ErrorAction SilentlyContinue
+        if (-not $netstat) {
+            return @()
+        }
+
+        $netstatOutput = @(& $netstat.Source "-ano" "-p" "TCP" 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            return @()
+        }
+        foreach ($line in $netstatOutput) {
+            if ($line -notmatch '^\s*TCP\s+(\S+)\s+\S+\s+LISTENING\s+(\d+)\s*$') {
+                continue
+            }
+            $localEndpoint = $Matches[1]
+            $listenerProcessId = [int]$Matches[2]
+            if ($localEndpoint -notmatch ':(\d+)$' -or [int]$Matches[1] -ne $ServerPort) {
+                continue
+            }
+            $processIds.Add($listenerProcessId) | Out-Null
+        }
+    }
+    else {
+        $lsof = Get-Command lsof -CommandType Application -ErrorAction SilentlyContinue
+        if (-not $lsof) {
+            return @()
+        }
+
+        $lsofOutput = @(
+            & $lsof.Source "-nP" "-a" "-iTCP:$ServerPort" "-sTCP:LISTEN" "-t" 2>$null
+        )
+        foreach ($line in $lsofOutput) {
+            $listenerProcessId = 0
+            if ([int]::TryParse($line.ToString().Trim(), [ref]$listenerProcessId)) {
+                $processIds.Add($listenerProcessId) | Out-Null
+            }
+        }
+    }
+
+    return @($processIds | ForEach-Object { [int]$_ })
+}
+
+function Test-TcpPortOwnedByProcess {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [int]$ServerPort
+    )
+
+    if (-not $Process -or $Process.HasExited) {
+        return $false
+    }
+    $listenerProcessIds = @(Get-ListeningProcessIds -ServerPort $ServerPort)
+    return $listenerProcessIds -contains $Process.Id
+}
+
+function Test-GmailOrganizerHealth {
+    param([int]$ServerPort)
+
+    $response = $null
+    $reader = $null
     try {
-        $client.Connect("127.0.0.1", $ServerPort)
-        return $client.Connected
+        $request = [System.Net.HttpWebRequest]::Create(
+            "http://127.0.0.1:$ServerPort/_stcore/health"
+        )
+        $request.Method = "GET"
+        $request.Timeout = 500
+        $request.ReadWriteTimeout = 500
+        $request.Proxy = $null
+        $response = $request.GetResponse()
+        if ([int]$response.StatusCode -ne 200) {
+            return $false
+        }
+        $reader = [System.IO.StreamReader]::new($response.GetResponseStream())
+        return $reader.ReadToEnd().Trim() -eq "ok"
     }
     catch {
         return $false
     }
     finally {
-        $client.Dispose()
+        if ($reader) {
+            $reader.Dispose()
+        }
+        if ($response) {
+            $response.Dispose()
+        }
     }
 }
 
@@ -356,7 +434,10 @@ function Wait-GmailOrganizerReady {
         if ($Process.HasExited) {
             return [pscustomobject]@{ Ready = $false; ProcessExited = $true }
         }
-        if (Test-TcpPortOpen -ServerPort $ServerPort) {
+        $portOwned = Test-TcpPortOwnedByProcess -Process $Process -ServerPort $ServerPort
+        if ($portOwned -and
+            (Test-GmailOrganizerHealth -ServerPort $ServerPort) -and
+            (Test-TcpPortOwnedByProcess -Process $Process -ServerPort $ServerPort)) {
             return [pscustomobject]@{ Ready = $true; ProcessExited = $false }
         }
         Start-Sleep -Milliseconds 200
@@ -375,12 +456,23 @@ function Stop-OwnedProcessTree {
         return
     }
 
+    $taskkillFailed = $false
     if (Test-IsWindows) {
         $taskkill = Get-Command taskkill.exe -CommandType Application -ErrorAction SilentlyContinue
         if ($taskkill) {
             & $taskkill.Source "/PID" $Process.Id.ToString() "/T" "/F" 2>$null | Out-Null
+            $taskkillFailed = $LASTEXITCODE -ne 0
+            if ($taskkillFailed -and -not $Process.HasExited) {
+                try {
+                    Stop-Process -Id $Process.Id -Force
+                }
+                catch {
+                    # Termination is verified below and reported with one stable error.
+                }
+            }
         }
         else {
+            $taskkillFailed = $true
             Stop-Process -Id $Process.Id -Force
         }
     }
@@ -388,11 +480,20 @@ function Stop-OwnedProcessTree {
         Stop-Process -Id $Process.Id -Force
     }
 
+    $stopped = $false
     try {
-        $Process.WaitForExit(5000) | Out-Null
+        $stopped = $Process.WaitForExit(5000)
     }
     catch {
         # The owned process may already have exited between the checks above.
+        $stopped = $Process.HasExited
+    }
+
+    if (-not $stopped -or -not $Process.HasExited) {
+        throw "Owned process $($Process.Id) did not stop within five seconds."
+    }
+    if ($taskkillFailed) {
+        throw "Windows process-tree cleanup failed for owned process $($Process.Id)."
     }
 }
 

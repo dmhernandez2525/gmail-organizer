@@ -108,6 +108,7 @@ def test_validate_only_proves_a_sanitized_launch_plan(launcher_fixture):
     assert Path(plan["PythonExecutable"]).is_file()
     assert plan["VenvRoot"] == str(launcher_fixture.venv_root)
     assert plan["PythonArguments"][:4] == ["-m", "streamlit", "run", "app.py"]
+    assert plan["PythonArguments"][-4:-2] == ["--server.address", "127.0.0.1"]
     assert plan["PythonArguments"][-1] == str(port)
     assert plan["Url"] == f"http://localhost:{port}"
     assert plan["MaxRestarts"] == 5
@@ -533,6 +534,110 @@ def test_port_race_is_rejected_immediately_before_process_start(launcher_fixture
     assert f"Local port {port} became unavailable before Streamlit startup" in result.stderr
 
 
+def test_unrelated_post_check_listener_cannot_satisfy_readiness(launcher_fixture):
+    port = free_port()
+    browser_file = launcher_fixture.root / "browser.marker"
+    listener_ready_file = launcher_fixture.root / "unrelated-listener.marker"
+    probe = POWERSHELL_LAUNCHER.parents[1] / "tests" / "unrelated_listener_race_probe.ps1"
+    environment = launcher_fixture.env.copy()
+    environment.update({"FAKE_STREAMLIT_MODE": "timeout", "FAKE_STREAMLIT_DURATION": "10"})
+    prepare_powershell_coverage_environment(environment)
+
+    result = subprocess.run(
+        [
+            PWSH,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(probe),
+            "-LauncherPath",
+            str(POWERSHELL_LAUNCHER),
+            "-ProjectRoot",
+            str(launcher_fixture.root),
+            "-BrowserMarkerPath",
+            str(browser_file),
+            "-ListenerReadyPath",
+            str(listener_ready_file),
+            "-Port",
+            str(port),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "UNRELATED_LISTENER_REJECTED" in result.stdout
+    assert listener_ready_file.is_file()
+    assert not browser_file.exists()
+
+
+def test_failed_taskkill_is_visible_and_parent_fallback_stops_process(launcher_fixture):
+    port = free_port()
+    probe = POWERSHELL_LAUNCHER.parents[1] / "tests" / "process_cleanup_failure_probe.ps1"
+    environment = launcher_fixture.env.copy()
+    environment.update({"FAKE_STREAMLIT_MODE": "timeout", "FAKE_STREAMLIT_DURATION": "30"})
+    prepare_powershell_coverage_environment(environment)
+
+    result = subprocess.run(
+        [
+            PWSH,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(probe),
+            "-LauncherPath",
+            str(POWERSHELL_LAUNCHER),
+            "-ProjectRoot",
+            str(launcher_fixture.root),
+            "-Port",
+            str(port),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "TASKKILL_FAILURE_SURFACED" in result.stdout
+
+
+def test_missing_health_endpoint_fails_closed():
+    port = free_port()
+    probe = POWERSHELL_LAUNCHER.parents[1] / "tests" / "health_failure_probe.ps1"
+    environment = os.environ.copy()
+    prepare_powershell_coverage_environment(environment)
+
+    result = subprocess.run(
+        [
+            PWSH,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(probe),
+            "-LauncherPath",
+            str(POWERSHELL_LAUNCHER),
+            "-Port",
+            str(port),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "UNHEALTHY_ENDPOINT_REJECTED" in result.stdout
+
+
 def test_normal_launch_rejects_failed_validation_before_start(launcher_fixture):
     (launcher_fixture.root / "client_secret.json").unlink()
 
@@ -647,6 +752,10 @@ def test_current_quoting_and_process_contract_is_narrow():
     assert "-ArgumentList $Plan.PythonArguments" in source
     assert '"-m"' in source and '"streamlit"' in source
     assert "Get-Command taskkill.exe -CommandType Application" in source
+    assert "Get-ListeningProcessIds" in source
+    assert "Test-TcpPortOwnedByProcess" in source
+    assert "Test-GmailOrganizerHealth" in source
+    assert "/_stcore/health" in source
     assert "Stop-Process -Id $Process.Id -Force" in source
     assert "Get-Process -Name" not in source
     assert "Open-GmailOrganizerBrowser -Url $Plan.Url" in source

@@ -22,23 +22,84 @@ function Measure-Percentage {
     return [Math]::Round(100.0 * $Covered / $Total, 2)
 }
 
-function Test-ConditionalOutcome {
+function Get-PositionKey {
+    param(
+        [int]$Line,
+        [int]$Column
+    )
+    return "$Line`:$Column"
+}
+
+function Get-ExtentKey {
+    param([System.Management.Automation.Language.IScriptExtent]$Extent)
+    return "$($Extent.StartLineNumber):$($Extent.StartColumnNumber):" +
+        "$($Extent.EndLineNumber):$($Extent.EndColumnNumber)"
+}
+
+function Test-PointInExtent {
+    param(
+        [pscustomobject]$Point,
+        [System.Management.Automation.Language.IScriptExtent]$Extent
+    )
+
+    if ($Point.Line -lt $Extent.StartLineNumber -or $Point.Line -gt $Extent.EndLineNumber) {
+        return $false
+    }
+    if ($Point.Line -eq $Extent.StartLineNumber -and
+        $Point.Column -lt $Extent.StartColumnNumber) {
+        return $false
+    }
+    if ($Point.Line -eq $Extent.EndLineNumber -and
+        $Point.Column -ge $Extent.EndColumnNumber) {
+        return $false
+    }
+    return $true
+}
+
+function Get-FirstTracePointInExtent {
+    param(
+        [object[]]$TracePoints,
+        [System.Management.Automation.Language.IScriptExtent]$Extent
+    )
+
+    return @(
+        $TracePoints |
+            Where-Object { Test-PointInExtent -Point $_ -Extent $Extent } |
+            Sort-Object -Property Line, Column
+    )[0]
+}
+
+function Get-CoverageSignalPoint {
+    param(
+        [object[]]$TracePoints,
+        [object[]]$ObservedPoints,
+        [System.Management.Automation.Language.IScriptExtent]$Extent
+    )
+
+    $observed = Get-FirstTracePointInExtent -TracePoints $ObservedPoints -Extent $Extent
+    if ($observed) {
+        return $observed
+    }
+    return Get-FirstTracePointInExtent -TracePoints $TracePoints -Extent $Extent
+}
+
+function Test-DecisionOutcome {
     param(
         [hashtable]$Traces,
-        [int]$ConditionLine,
-        [int]$BodyLine,
+        [string]$ConditionKey,
+        [System.Management.Automation.Language.IScriptExtent]$BodyExtent,
         [bool]$ExpectedBodyHit
     )
 
     foreach ($trace in $Traces.Values) {
         for ($index = 0; $index -lt $trace.Count; $index += 1) {
-            if ($trace[$index] -ne $ConditionLine) {
+            if ($trace[$index].Key -ne $ConditionKey) {
                 continue
             }
 
             $nextCondition = $trace.Count
             for ($cursor = $index + 1; $cursor -lt $trace.Count; $cursor += 1) {
-                if ($trace[$cursor] -eq $ConditionLine) {
+                if ($trace[$cursor].Key -eq $ConditionKey) {
                     $nextCondition = $cursor
                     break
                 }
@@ -46,7 +107,7 @@ function Test-ConditionalOutcome {
 
             $bodyHit = $false
             for ($cursor = $index + 1; $cursor -lt $nextCondition; $cursor += 1) {
-                if ($trace[$cursor] -eq $BodyLine) {
+                if (Test-PointInExtent -Point $trace[$cursor] -Extent $BodyExtent) {
                     $bodyHit = $true
                     break
                 }
@@ -73,28 +134,35 @@ if ($parseErrors.Count -gt 0) {
 }
 
 $traces = @{}
-$hitLines = @{}
+$hitPoints = @{}
 foreach ($record in [System.IO.File]::ReadLines($resolvedCoverage)) {
-    $parts = $record.Split(",", 2)
-    if ($parts.Count -ne 2) {
+    $parts = $record.Split(",", 3)
+    if ($parts.Count -ne 3) {
         throw "The PowerShell coverage trace contains a malformed record."
     }
     $runId = $parts[0]
     $line = 0
-    if (-not [int]::TryParse($parts[1], [ref]$line)) {
-        throw "The PowerShell coverage trace contains a nonnumeric line."
+    $column = 0
+    if (-not [int]::TryParse($parts[1], [ref]$line) -or
+        -not [int]::TryParse($parts[2], [ref]$column)) {
+        throw "The PowerShell coverage trace contains a nonnumeric source position."
+    }
+    $point = [pscustomobject]@{
+        Line = $line
+        Column = $column
+        Key = Get-PositionKey -Line $line -Column $column
     }
     if (-not $traces.ContainsKey($runId)) {
-        $traces[$runId] = [System.Collections.Generic.List[int]]::new()
+        $traces[$runId] = [System.Collections.Generic.List[object]]::new()
     }
-    $traces[$runId].Add($line)
-    $hitLines[$line] = $true
+    $traces[$runId].Add($point)
+    $hitPoints[$point.Key] = $point
 }
 if ($traces.Count -eq 0) {
     throw "The PowerShell coverage trace is empty."
 }
 
-$statementLines = @(
+$tracePoints = @(
     $ast.FindAll(
         {
             param($node)
@@ -102,9 +170,65 @@ $statementLines = @(
                 $node -isnot [System.Management.Automation.Language.FunctionDefinitionAst]
         },
         $true
-    ).Extent.StartLineNumber | Sort-Object -Unique
+    ) |
+        ForEach-Object {
+            [pscustomobject]@{
+                Line = $_.Extent.StartLineNumber
+                Column = $_.Extent.StartColumnNumber
+                Key = Get-PositionKey `
+                    -Line $_.Extent.StartLineNumber `
+                    -Column $_.Extent.StartColumnNumber
+            }
+        } |
+        Sort-Object -Property Line, Column -Unique
 )
-$coveredStatementLines = @($statementLines | Where-Object { $hitLines.ContainsKey($_) })
+
+$logicalStatements = @{}
+$statementBlocks = @(
+    $ast.FindAll(
+        {
+            param($node)
+            $node -is [System.Management.Automation.Language.NamedBlockAst] -or
+                $node -is [System.Management.Automation.Language.StatementBlockAst]
+        },
+        $true
+    )
+)
+foreach ($block in $statementBlocks) {
+    foreach ($statement in @($block.Statements)) {
+        if ($statement -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            continue
+        }
+        $statementKey = Get-ExtentKey -Extent $statement.Extent
+        if (-not $logicalStatements.ContainsKey($statementKey)) {
+            $logicalStatements[$statementKey] = $statement
+        }
+    }
+}
+
+$statementResults = @(
+    foreach ($entry in $logicalStatements.GetEnumerator()) {
+        $covered = @(
+            $hitPoints.Values |
+                Where-Object { Test-PointInExtent -Point $_ -Extent $entry.Value.Extent }
+        ).Count -gt 0
+        [pscustomobject]@{
+            Key = $entry.Key
+            Line = $entry.Value.Extent.StartLineNumber
+            Covered = $covered
+        }
+    }
+)
+$coveredStatements = @($statementResults | Where-Object { $_.Covered })
+$coveredStatementByKey = @{}
+foreach ($statementResult in $statementResults) {
+    $coveredStatementByKey[$statementResult.Key] = $statementResult.Covered
+}
+
+$statementLines = @($statementResults.Line | Sort-Object -Unique)
+$coveredLines = @(
+    $coveredStatements.Line | Sort-Object -Unique
+)
 
 $functions = @(
     $ast.FindAll(
@@ -112,17 +236,22 @@ $functions = @(
         $true
     )
 )
-$functionEntries = @(
+$functionResults = @(
     foreach ($function in $functions) {
         $bodyStatements = @($function.Body.EndBlock.Statements)
-        if ($bodyStatements.Count -gt 0) {
-            $bodyStatements[0].Extent.StartLineNumber
+        if ($bodyStatements.Count -eq 0) {
+            continue
+        }
+        $entryKey = Get-ExtentKey -Extent $bodyStatements[0].Extent
+        [pscustomobject]@{
+            Name = $function.Name
+            Covered = [bool]$coveredStatementByKey[$entryKey]
         }
     }
 )
-$coveredFunctionEntries = @($functionEntries | Where-Object { $hitLines.ContainsKey($_) })
+$coveredFunctions = @($functionResults | Where-Object { $_.Covered })
 
-$conditionalTargets = [System.Collections.Generic.List[object]]::new()
+$decisionDefinitions = [System.Collections.Generic.List[object]]::new()
 $ifStatements = @(
     $ast.FindAll(
         { param($node) $node -is [System.Management.Automation.Language.IfStatementAst] },
@@ -135,51 +264,115 @@ foreach ($ifStatement in $ifStatements) {
         if ($bodyStatements.Count -eq 0) {
             continue
         }
-        $conditionLine = $clause.Item1.Extent.StartLineNumber
-        $bodyLine = $bodyStatements[0].Extent.StartLineNumber
-        $conditionalTargets.Add(
-            [pscustomobject]@{ ConditionLine = $conditionLine; BodyLine = $bodyLine; BodyHit = $true }
-        )
-        $conditionalTargets.Add(
-            [pscustomobject]@{ ConditionLine = $conditionLine; BodyLine = $bodyLine; BodyHit = $false }
+        $conditionPoint = Get-CoverageSignalPoint `
+            -TracePoints $tracePoints `
+            -ObservedPoints @($hitPoints.Values) `
+            -Extent $clause.Item1.Extent
+        $bodyPoint = Get-FirstTracePointInExtent `
+            -TracePoints $tracePoints `
+            -Extent $bodyStatements[0].Extent
+        if (-not $conditionPoint -or -not $bodyPoint) {
+            throw "An if decision did not expose breakpointable condition and body positions."
+        }
+        $decisionDefinitions.Add(
+            [pscustomobject]@{
+                Kind = "If"
+                Line = $clause.Item1.Extent.StartLineNumber
+                ConditionKey = $conditionPoint.Key
+                BodyExtent = $bodyStatements[0].Extent
+            }
         )
     }
 }
-$evaluatedConditionalTargets = @(
-    $conditionalTargets | ForEach-Object {
-        $covered = Test-ConditionalOutcome `
-            -Traces $traces `
-            -ConditionLine $_.ConditionLine `
-            -BodyLine $_.BodyLine `
-            -ExpectedBodyHit $_.BodyHit
+
+$loopStatements = @(
+    $ast.FindAll(
+        { param($node) $node -is [System.Management.Automation.Language.LoopStatementAst] },
+        $true
+    )
+)
+foreach ($loopStatement in $loopStatements) {
+    $bodyStatements = @($loopStatement.Body.Statements)
+    if (-not $loopStatement.Condition -or $bodyStatements.Count -eq 0) {
+        continue
+    }
+    $conditionPoint = Get-CoverageSignalPoint `
+        -TracePoints $tracePoints `
+        -ObservedPoints @($hitPoints.Values) `
+        -Extent $loopStatement.Condition.Extent
+    $bodyPoint = Get-FirstTracePointInExtent `
+        -TracePoints $tracePoints `
+        -Extent $bodyStatements[0].Extent
+    if (-not $conditionPoint -or -not $bodyPoint) {
+        throw "A loop decision did not expose breakpointable condition and body positions."
+    }
+    $decisionDefinitions.Add(
         [pscustomobject]@{
-            ConditionLine = $_.ConditionLine
-            BodyLine = $_.BodyLine
-            Outcome = if ($_.BodyHit) { "true" } else { "false" }
-            Covered = $covered
+            Kind = $loopStatement.GetType().Name
+            Line = $loopStatement.Extent.StartLineNumber
+            ConditionKey = $conditionPoint.Key
+            BodyExtent = $bodyStatements[0].Extent
+        }
+    )
+}
+
+$branchTargets = @(
+    foreach ($decision in $decisionDefinitions) {
+        foreach ($bodyHit in @($true, $false)) {
+            [pscustomobject]@{
+                Kind = $decision.Kind
+                Line = $decision.Line
+                ConditionKey = $decision.ConditionKey
+                BodyExtent = $decision.BodyExtent
+                BodyHit = $bodyHit
+            }
         }
     }
 )
-$coveredConditionalTargets = @($evaluatedConditionalTargets | Where-Object { $_.Covered })
+$evaluatedBranchTargets = @(
+    foreach ($target in $branchTargets) {
+        [pscustomobject]@{
+            Kind = $target.Kind
+            Line = $target.Line
+            Outcome = if ($target.BodyHit) { "body-entered" } else { "body-skipped" }
+            Covered = Test-DecisionOutcome `
+                -Traces $traces `
+                -ConditionKey $target.ConditionKey `
+                -BodyExtent $target.BodyExtent `
+                -ExpectedBodyHit $target.BodyHit
+        }
+    }
+)
+$coveredBranchTargets = @($evaluatedBranchTargets | Where-Object { $_.Covered })
 
 $metrics = @(
     [pscustomobject]@{
-        Metric = "Line"
-        Covered = $coveredStatementLines.Count
-        Total = $statementLines.Count
-        Percent = Measure-Percentage $coveredStatementLines.Count $statementLines.Count
-    },
-    [pscustomobject]@{
-        Metric = "Function"
-        Covered = $coveredFunctionEntries.Count
-        Total = $functionEntries.Count
-        Percent = Measure-Percentage $coveredFunctionEntries.Count $functionEntries.Count
+        Metric = "Statement"
+        Covered = $coveredStatements.Count
+        Total = $statementResults.Count
+        Percent = Measure-Percentage $coveredStatements.Count $statementResults.Count
+        Semantics = "Direct block statements covered when a breakpointable position in their extent ran."
     },
     [pscustomobject]@{
         Metric = "Branch"
-        Covered = $coveredConditionalTargets.Count
-        Total = $conditionalTargets.Count
-        Percent = Measure-Percentage $coveredConditionalTargets.Count $conditionalTargets.Count
+        Covered = $coveredBranchTargets.Count
+        Total = $branchTargets.Count
+        Percent = Measure-Percentage $coveredBranchTargets.Count $branchTargets.Count
+        Semantics = "Body-entered and body-skipped outcomes for if clauses and loop statements."
+    },
+    [pscustomobject]@{
+        Metric = "Function"
+        Covered = $coveredFunctions.Count
+        Total = $functionResults.Count
+        Percent = Measure-Percentage $coveredFunctions.Count $functionResults.Count
+        Semantics = "Functions whose first direct body statement was covered."
+    },
+    [pscustomobject]@{
+        Metric = "Line"
+        Covered = $coveredLines.Count
+        Total = $statementLines.Count
+        Percent = Measure-Percentage $coveredLines.Count $statementLines.Count
+        Semantics = "Unique direct-statement start lines with at least one covered statement."
     }
 )
 
@@ -187,11 +380,11 @@ $metrics | ConvertTo-Json -Depth 3
 $failures = @($metrics | Where-Object { $_.Percent -lt $Minimum })
 if ($failures.Count -gt 0) {
     $missingBranches = @(
-        $evaluatedConditionalTargets |
+        $evaluatedBranchTargets |
             Where-Object { -not $_.Covered } |
-            ForEach-Object { "$($_.ConditionLine):$($_.Outcome)->$($_.BodyLine)" }
+            ForEach-Object { "$($_.Kind):$($_.Line):$($_.Outcome)" }
     )
-    [Console]::Error.WriteLine("Uncovered conditional outcomes: $($missingBranches -join ', ')")
+    [Console]::Error.WriteLine("Uncovered decision outcomes: $($missingBranches -join ', ')")
     $names = ($failures | ForEach-Object { "$($_.Metric)=$($_.Percent)%" }) -join ", "
     throw "PowerShell launcher coverage is below $Minimum percent: $names."
 }

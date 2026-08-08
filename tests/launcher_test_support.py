@@ -73,12 +73,73 @@ listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 listener.bind(("127.0.0.1", port))
 listener.listen(8)
+listener.settimeout(0.1)
 ready_file = os.environ.get("FAKE_STREAMLIT_READY_FILE")
 if ready_file:
     Path(ready_file).write_text("ready\n", encoding="utf-8")
-time.sleep(float(os.environ.get("FAKE_STREAMLIT_DURATION", "1")))
+deadline = time.monotonic() + float(os.environ.get("FAKE_STREAMLIT_DURATION", "1"))
+while time.monotonic() < deadline:
+    try:
+        connection, _address = listener.accept()
+    except socket.timeout:
+        continue
+    try:
+        request = connection.recv(4096)
+        if request.startswith(b"GET /_stcore/health "):
+            body = b"ok"
+            status = b"200 OK"
+        else:
+            body = b"not found"
+            status = b"404 Not Found"
+        connection.sendall(
+            b"HTTP/1.1 "
+            + status
+            + b"\r\nContent-Type: text/plain\r\nContent-Length: "
+            + str(len(body)).encode("ascii")
+            + b"\r\nConnection: close\r\n\r\n"
+            + body
+        )
+    except OSError:
+        pass
+    finally:
+        connection.close()
 listener.close()
 raise SystemExit(int(os.environ.get("FAKE_STREAMLIT_EXIT", "0")))
+'''
+
+
+UNRELATED_LISTENER = r'''from __future__ import annotations
+
+import os
+import socket
+import time
+from pathlib import Path
+
+
+port = int(os.environ["UNRELATED_LISTENER_PORT"])
+listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(("127.0.0.1", port))
+listener.listen(8)
+listener.settimeout(0.1)
+Path(os.environ["UNRELATED_LISTENER_READY_FILE"]).write_text("ready\n", encoding="utf-8")
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    try:
+        connection, _address = listener.accept()
+    except socket.timeout:
+        continue
+    try:
+        connection.recv(4096)
+        connection.sendall(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2"
+            b"\r\nConnection: close\r\n\r\nok"
+        )
+    except OSError:
+        pass
+    finally:
+        connection.close()
+listener.close()
 '''
 
 
@@ -144,6 +205,9 @@ def make_project(
     shutil.copy2(RUNTIME_VALIDATOR, project_root / "scripts" / RUNTIME_VALIDATOR.name)
     shutil.copy2(CMD_LAUNCHER, project_root / CMD_LAUNCHER.name)
     (project_root / "app.py").write_text("# fixture\n", encoding="utf-8")
+    (project_root / "unrelated_listener.py").write_text(
+        UNRELATED_LISTENER, encoding="utf-8"
+    )
     if env_text is not None:
         (project_root / ".env").write_text(env_text, encoding="utf-8")
     if client_secret is not None:

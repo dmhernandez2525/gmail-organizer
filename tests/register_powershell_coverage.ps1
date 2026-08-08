@@ -23,7 +23,7 @@ function Register-LauncherCoverage {
         throw "The launcher could not be instrumented because it has parser errors."
     }
 
-    $statementLines = @(
+    $tracePoints = @(
         $ast.FindAll(
             {
                 param($node)
@@ -31,19 +31,31 @@ function Register-LauncherCoverage {
                     $node -isnot [System.Management.Automation.Language.FunctionDefinitionAst]
             },
             $true
-        ).Extent.StartLineNumber | Sort-Object -Unique
+        ) |
+            ForEach-Object {
+                [pscustomobject]@{
+                    Line = $_.Extent.StartLineNumber
+                    Column = $_.Extent.StartColumnNumber
+                }
+            } |
+            Sort-Object -Property Line, Column -Unique
     )
 
-    foreach ($statementLine in $statementLines) {
-        $capturedLine = $statementLine
+    foreach ($tracePoint in $tracePoints) {
+        $capturedLine = $tracePoint.Line
+        $capturedColumn = $tracePoint.Column
         $capturedFile = $coverageFile
         $capturedRunId = $coverageRunId
         $action = {
-            [System.IO.File]::AppendAllText($capturedFile, "$capturedRunId,$capturedLine`n")
+            [System.IO.File]::AppendAllText(
+                $capturedFile,
+                "$capturedRunId,$capturedLine,$capturedColumn`n"
+            )
         }.GetNewClosure()
         Set-PSBreakpoint `
             -Script $resolvedLauncher `
-            -Line $statementLine `
+            -Line $capturedLine `
+            -Column $capturedColumn `
             -Action $action `
             -ErrorAction SilentlyContinue | Out-Null
     }

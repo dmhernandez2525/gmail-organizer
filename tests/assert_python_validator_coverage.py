@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce separate line, branch, and function coverage thresholds."""
+"""Enforce statement, branch, function, and line coverage thresholds."""
 
 from __future__ import annotations
 
@@ -34,6 +34,15 @@ def function_entry_lines(source_path: Path) -> list[int]:
     ]
 
 
+def statement_entries(source_path: Path) -> list[tuple[int, int, str]]:
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    return [
+        (node.lineno, node.col_offset, type(node).__name__)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.stmt)
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--coverage-json", required=True, type=Path)
@@ -46,7 +55,11 @@ def main() -> int:
     summary = record["summary"]
     executed_lines = set(record["executed_lines"])
     entries = function_entry_lines(args.source)
+    statements = statement_entries(args.source)
     metrics = {
+        "Statement": percentage(
+            sum(line in executed_lines for line, _column, _kind in statements), len(statements)
+        ),
         "Line": percentage(summary["covered_lines"], summary["num_statements"]),
         "Branch": percentage(summary["covered_branches"], summary["num_branches"]),
         "Function": percentage(sum(line in executed_lines for line in entries), len(entries)),

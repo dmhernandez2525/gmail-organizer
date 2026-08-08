@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure validator line, bytecode-branch, and function coverage without plugins."""
+"""Measure validator statement, branch, function, and line coverage without plugins."""
 
 from __future__ import annotations
 
@@ -75,6 +75,11 @@ def main() -> int:
     source_path = args.source.resolve()
     source_text = source_path.read_text(encoding="utf-8")
     syntax_tree = ast.parse(source_text, filename=str(source_path))
+    static_statements = [
+        (node.lineno, node.col_offset, type(node).__name__)
+        for node in ast.walk(syntax_tree)
+        if isinstance(node, ast.stmt)
+    ]
     excluded_branch_lines = {
         node.lineno for node in ast.walk(syntax_tree) if isinstance(node, ast.ExceptHandler)
     }
@@ -143,6 +148,10 @@ def main() -> int:
         return pytest_exit
 
     metrics = {
+        "Statement": percentage(
+            sum(line in executed_lines for line, _column, _kind in static_statements),
+            len(static_statements),
+        ),
         "Line": percentage(len(static_lines & executed_lines), len(static_lines)),
         "Branch": percentage(len(static_branches & executed_arcs), len(static_branches)),
         "Function": percentage(len(static_functions & called_functions), len(static_functions)),
