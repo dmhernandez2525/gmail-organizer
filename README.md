@@ -255,10 +255,12 @@ PersonaPlex: "Archived. Want me to continue with the rest?"
 
 ### Prerequisites
 
-- macOS (for .app launcher)
-- Python 3.11+
+- macOS for the native helper, or Windows 10/11 for the Windows launcher
+- PowerShell 5.1 or PowerShell 7 on Windows
+- Python 3.11 or newer
 - Gmail account(s)
-- Anthropic API key OR Claude Code CLI
+- A Google OAuth 2.0 Desktop app credential
+- An Anthropic API key for the Windows launcher's fail-closed validation
 
 ### Installation
 
@@ -268,7 +270,7 @@ git clone https://github.com/dmhernandez2525/gmail-organizer.git
 cd gmail-organizer
 ```
 
-2. **Set up environment**
+2. **Set up the environment on macOS or Linux**
 ```bash
 # Copy example environment file
 cp .env.example .env
@@ -278,20 +280,36 @@ cp .env.example .env
 nano .env
 ```
 
-3. **Get Google OAuth credentials**
+Create the virtual environment and install the declared dependencies:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+3. **Set up the environment on Windows**
+
+From PowerShell in the repository root:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+py -3.11 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+The launcher does not install Python, create a virtual environment, install packages, or repair
+configuration. Complete those steps manually before launching. If the `py` command is unavailable,
+install Python 3.11 or newer and ensure its Windows launcher is enabled.
+
+4. **Get Google OAuth credentials**
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Create a new project or select existing
    - Enable Gmail API
    - Create OAuth 2.0 credentials (Desktop app)
    - Download as `client_secret.json` to project root
    - Add yourself as a test user in OAuth consent screen
-
-4. **Install dependencies**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
 
 5. **(Optional) Install Claude Code CLI**
 ```bash
@@ -309,20 +327,40 @@ cd gmail-organizer
 ./scripts/launch_gmail_organizer.sh
 ```
 
-Windows PowerShell:
+Windows double-click launcher:
+
+Double-click `launch_gmail_organizer.cmd` in File Explorer. The command window remains open when
+startup fails so the validation error can be read. From a terminal, the same entry point is:
 
 ```powershell
 Set-Location gmail-organizer
-.\scripts\launch_gmail_organizer.ps1
+.\launch_gmail_organizer.cmd
 ```
 
-To validate the Windows setup without starting Streamlit or opening a browser:
+The wrapper prefers PowerShell 7 and falls back to Windows PowerShell 5.1. Its
+`-ExecutionPolicy Bypass` setting applies to that launched process only. It does not change the
+user or machine execution policy.
+
+For advanced options, call the PowerShell script directly. To validate the Windows setup without
+starting Streamlit or opening a browser:
 
 ```powershell
 .\scripts\launch_gmail_organizer.ps1 -ValidateOnly
 ```
 
-The Windows launcher checks the project files, virtual environment, and authentication configuration without printing credential values. It uses the default browser, limits automatic restarts to three by default, and stops only the Streamlit process it created. Use `-NoBrowser`, `-Port`, or `-MaxRestarts` to override those defaults.
+`-ValidateOnly` exits nonzero unless every checked launch prerequisite passes. It verifies the
+repository files, the exact `venv` or `.venv` interpreter and Python version, every required runtime
+import, effective Anthropic key configuration, installed-app Google OAuth JSON shape, and local port
+availability. An inherited `ANTHROPIC_API_KEY` takes precedence over `.env`; repeated `.env` keys use
+the last assignment. The sanitized JSON field `Launchable` is true only when all checks pass, and no
+credential values are printed.
+
+On a normal launch, the browser opens only after the selected port accepts a TCP connection. The
+launcher limits automatic restarts to three by default and cleans up the process tree it started on
+Windows when controlled shutdown runs. Use `-NoBrowser`, `-Port`, `-MaxRestarts`, or
+`-StartupTimeoutSeconds` to override those defaults. The native Windows CI job exercises the `.cmd`
+path, startup, bounded retry, timeout, and process-tree contracts. A real Google OAuth consent flow
+still requires a disposable manual Windows acceptance test.
 
 #### Option 2: Streamlit Direct
 
@@ -381,6 +419,7 @@ gmail-organizer
 
 ```
 gmail-organizer/
+├── launch_gmail_organizer.cmd # Windows double-click entry point
 ├── gmail_organizer/          # Python package
 │   ├── __init__.py           # Package exports
 │   ├── auth.py               # Multi-account OAuth manager
@@ -415,6 +454,7 @@ gmail-organizer/
 ├── scripts/                  # Launcher scripts
 │   ├── launch_gmail_organizer.sh
 │   ├── launch_gmail_organizer.ps1
+│   ├── validate_gmail_organizer_runtime.py
 │   └── GmailOrganizer.applescript
 ├── website/                  # React portfolio site
 │   ├── src/
