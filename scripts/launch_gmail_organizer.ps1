@@ -146,18 +146,19 @@ function Start-GmailOrganizer {
 
             Start-Sleep -Seconds 2
             if ($process.HasExited) {
-                throw "Streamlit exited during startup with code $($process.ExitCode)."
+                $exitCode = $process.ExitCode
             }
+            else {
+                if (-not $browserOpened) {
+                    Start-Process $Plan.Url
+                    $browserOpened = $true
+                }
 
-            if (-not $browserOpened) {
-                Start-Process $Plan.Url
-                $browserOpened = $true
+                Write-Host "Gmail Organizer is running at $($Plan.Url)."
+                Write-Host "Press Ctrl+C to stop the server."
+                $process.WaitForExit()
+                $exitCode = $process.ExitCode
             }
-
-            Write-Host "Gmail Organizer is running at $($Plan.Url)."
-            Write-Host "Press Ctrl+C to stop the server."
-            $process.WaitForExit()
-            $exitCode = $process.ExitCode
         }
         finally {
             if ($process -and -not $process.HasExited) {

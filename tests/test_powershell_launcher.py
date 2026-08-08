@@ -257,6 +257,28 @@ def test_no_browser_launch_reports_bounded_runtime_failure(tmp_path):
     assert "test-secret" not in result.stderr
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Uses a POSIX fixture executable")
+def test_no_browser_launch_retries_a_fast_startup_failure(tmp_path):
+    project_root = make_project(tmp_path)
+    streamlit = project_root / "venv" / "bin" / "streamlit"
+    attempt_file = project_root / "attempted"
+    streamlit.write_text(
+        "#!/bin/sh\n"
+        f"if [ ! -f '{attempt_file}' ]; then touch '{attempt_file}'; exit 7; fi\n"
+        "sleep 3\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    streamlit.chmod(0o755)
+
+    result = run_launcher_normally(project_root, "-MaxRestarts", "1")
+
+    assert result.returncode == 0, result.stderr
+    assert attempt_file.exists()
+    assert "Restarting, attempt 1 of 1" in result.stdout + result.stderr
+    assert "Gmail Organizer is running at http://localhost:8501" in result.stdout
+
+
 def test_launcher_has_safe_process_and_restart_contract():
     source = LAUNCHER.read_text(encoding="utf-8")
 
